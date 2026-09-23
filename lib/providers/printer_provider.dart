@@ -143,6 +143,19 @@ class PrinterNotifier extends Notifier<PrinterState> {
     return success;
   }
 
+  /// Cetak tiket dapur (kitchen ticket)
+  Future<bool> printKitchenTicket(OrderModel order) async {
+    if (!state.isConnected) {
+      state = state.copyWith(statusMessage: () => 'Printer belum terhubung.');
+      return false;
+    }
+
+    state = state.copyWith(isPrinting: true);
+    final success = await BluetoothPrinterService.printKitchenTicket(order);
+    state = state.copyWith(isPrinting: false);
+    return success;
+  }
+
   /// Cetak struk pengujian (test print)
   Future<bool> printTestReceipt({String storeName = 'SCHAW CAFE'}) async {
     if (!state.isConnected) return false;

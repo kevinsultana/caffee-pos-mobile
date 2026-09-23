@@ -131,95 +131,118 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        content: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 64,
-                height: 64,
-                decoration: const BoxDecoration(
-                  color: AppColors.primaryContainer,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.check_circle_rounded,
-                  color: AppColors.primary,
-                  size: 40,
-                ),
+        contentPadding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 60,
+              height: 60,
+              decoration: const BoxDecoration(
+                color: AppColors.primaryContainer,
+                shape: BoxShape.circle,
               ),
-              const SizedBox(height: 16),
-              const Text(
-                'Pembayaran Berhasil!',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary,
-                ),
+              child: const Icon(
+                Icons.check_circle_rounded,
+                color: AppColors.primary,
+                size: 38,
               ),
-              const SizedBox(height: 6),
-              Text(
-                'No. Order: ${order.orderNumber}',
-                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Pembayaran Berhasil! 🎉',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary,
               ),
-              const SizedBox(height: 16),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'No. Order: ${order.orderNumber}${order.publicQrToken != null ? " • QR #${order.publicQrToken}" : ""}',
+              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 14),
 
-              // Nomor Antrean Menonjol
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                decoration: BoxDecoration(
-                  color: AppColors.background,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Column(
-                  children: [
-                    const Text(
-                      'NOMOR ANTREAN',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      order.queueNumber ?? '-',
-                      style: const TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.primaryDark,
-                      ),
-                    ),
-                    Text(
-                      order.diningLabel,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
+            // Nomor Antrean Menonjol
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.border),
               ),
-
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: Column(
                 children: [
-                  const Text('Total Pembayaran', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                  const Text(
+                    'NOMOR ANTREAN',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
                   Text(
-                    order.formattedGrandTotal,
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    order.queueNumber ?? '-',
+                    style: const TextStyle(
+                      fontSize: 30,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.primaryDark,
+                    ),
+                  ),
+                  Text(
+                    order.diningLabel,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ],
               ),
-              if (order.payment?.method == 'CASH' && order.payment?.changeAmount != null) ...[
-                const SizedBox(height: 6),
+            ),
+
+            const SizedBox(height: 14),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Total Tagihan', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                Text(
+                  order.formattedGrandTotal,
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Metode Bayar', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                Text(
+                  order.payment?.method ?? 'CASH',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+            if (order.payment?.method == 'CASH' && order.payment?.cashReceived != null) ...[
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Uang Diterima', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                  Text(
+                    order.payment!.formattedCashReceived,
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+              if (order.payment?.changeAmount != null) ...[
+                const SizedBox(height: 4),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -236,50 +259,140 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 ),
               ],
             ],
-          ),
+          ],
         ),
         actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         actions: [
-          Row(
+          Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+              // Row: Cetak Tiket Dapur & Cetak Struk
+              Row(
+                children: [
+                  // 1. Cetak Tiket Dapur (Sky Blue #0284C7 seperti Web)
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0284C7),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 11),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: () async {
+                        final printerState = ref.read(printerProvider);
+                        if (!printerState.isConnected) {
+                          AppToast.showWarning(
+                            context,
+                            'Printer belum terhubung. Sambungkan di Pengaturan Printer.',
+                          );
+                          return;
+                        }
+                        final success = await ref
+                            .read(printerProvider.notifier)
+                            .printKitchenTicket(order);
+                        if (!mounted) return;
+                        if (success) {
+                          AppToast.showSuccess(
+                            context,
+                            'Tiket dapur berhasil dicetak!',
+                          );
+                        } else {
+                          AppToast.showError(
+                            context,
+                            'Gagal mencetak tiket dapur. Periksa printer.',
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.soup_kitchen_rounded, size: 16),
+                      label: const FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'Tiket Dapur',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                        ),
+                      ),
+                    ),
                   ),
-                  onPressed: () {
-                    final auth = ref.read(authProvider);
-                    ref.read(printerProvider.notifier).printReceipt(
-                          order,
-                          storeName: auth.storeName.isNotEmpty ? auth.storeName : 'SCHAW CAFE',
-                          cashierName: auth.userName,
-                        );
-                    AppToast.showInfo(
-                      context,
-                      'Perintah cetak struk dikirim ke printer',
-                      duration: const Duration(seconds: 1),
-                    );
-                  },
-                  icon: const Icon(Icons.print_rounded, size: 18),
-                  label: const FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text('Cetak Struk'),
+                  const SizedBox(width: 8),
+
+                  // 2. Cetak Struk (Slate #475569 seperti Web)
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF475569),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 11),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: () async {
+                        final auth = ref.read(authProvider);
+                        final printerState = ref.read(printerProvider);
+                        if (!printerState.isConnected) {
+                          AppToast.showWarning(
+                            context,
+                            'Printer belum terhubung. Sambungkan di Pengaturan Printer.',
+                          );
+                          return;
+                        }
+                        final success = await ref.read(printerProvider.notifier).printReceipt(
+                              order,
+                              storeName: auth.storeName.isNotEmpty ? auth.storeName : 'SCHAW CAFE',
+                              cashierName: auth.userName,
+                            );
+                        if (!mounted) return;
+                        if (success) {
+                          AppToast.showSuccess(
+                            context,
+                            'Struk berhasil dicetak!',
+                          );
+                        } else {
+                          AppToast.showError(
+                            context,
+                            'Gagal mencetak struk. Periksa status printer.',
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.print_rounded, size: 16),
+                      label: const FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'Cetak Struk',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ElevatedButton(
+              const SizedBox(height: 8),
+
+              // 3. Tombol Transaksi Baru (Emerald Green #059669 penuh seperti Web)
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                   onPressed: () {
                     Navigator.pop(ctx); // Tutup dialog
                     Navigator.pop(context); // Kembali dari checkout screen ke POS
                   },
-                  child: const FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text('Selesai'),
+                  icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
+                  label: const Text(
+                    'Transaksi Baru ✓',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),
@@ -422,48 +535,106 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                         Row(
                           children: [
                             Expanded(
-                              child: ChoiceChip(
-                                selected: _paymentMethod == 'CASH',
-                                onSelected: (_) => setState(() {
+                              child: InkWell(
+                                onTap: () => setState(() {
                                   _paymentMethod = 'CASH';
                                 }),
-                                label: const Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.money_rounded, size: 18),
-                                    SizedBox(width: 8),
-                                    Text('CASH (Tunai)'),
-                                  ],
-                                ),
-                                selectedColor: AppColors.primaryContainer,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  side: BorderSide(
-                                    color: _paymentMethod == 'CASH' ? AppColors.primary : AppColors.border,
+                                borderRadius: BorderRadius.circular(14),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 150),
+                                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                                  decoration: BoxDecoration(
+                                    color: _paymentMethod == 'CASH'
+                                        ? AppColors.primaryContainer
+                                        : AppColors.surfaceMuted,
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: _paymentMethod == 'CASH'
+                                          ? AppColors.primary
+                                          : AppColors.border,
+                                      width: _paymentMethod == 'CASH' ? 1.5 : 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.payments_rounded,
+                                        size: 18,
+                                        color: _paymentMethod == 'CASH'
+                                            ? AppColors.primaryDark
+                                            : AppColors.textSecondary,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Flexible(
+                                        child: Text(
+                                          'CASH (Tunai)',
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: _paymentMethod == 'CASH'
+                                                ? FontWeight.w700
+                                                : FontWeight.w600,
+                                            color: _paymentMethod == 'CASH'
+                                                ? AppColors.primaryDark
+                                                : AppColors.textSecondary,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: ChoiceChip(
-                                selected: _paymentMethod == 'QRIS',
-                                onSelected: (_) => setState(() {
+                              child: InkWell(
+                                onTap: () => setState(() {
                                   _paymentMethod = 'QRIS';
                                 }),
-                                label: const Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.qr_code_scanner_rounded, size: 18),
-                                    SizedBox(width: 8),
-                                    Text('QRIS'),
-                                  ],
-                                ),
-                                selectedColor: AppColors.primaryContainer,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  side: BorderSide(
-                                    color: _paymentMethod == 'QRIS' ? AppColors.primary : AppColors.border,
+                                borderRadius: BorderRadius.circular(14),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 150),
+                                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                                  decoration: BoxDecoration(
+                                    color: _paymentMethod == 'QRIS'
+                                        ? AppColors.primaryContainer
+                                        : AppColors.surfaceMuted,
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: _paymentMethod == 'QRIS'
+                                          ? AppColors.primary
+                                          : AppColors.border,
+                                      width: _paymentMethod == 'QRIS' ? 1.5 : 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.qr_code_scanner_rounded,
+                                        size: 18,
+                                        color: _paymentMethod == 'QRIS'
+                                            ? AppColors.primaryDark
+                                            : AppColors.textSecondary,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Flexible(
+                                        child: Text(
+                                          'QRIS',
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: _paymentMethod == 'QRIS'
+                                                ? FontWeight.w700
+                                                : FontWeight.w600,
+                                            color: _paymentMethod == 'QRIS'
+                                                ? AppColors.primaryDark
+                                                : AppColors.textSecondary,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),

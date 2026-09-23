@@ -254,6 +254,7 @@ class _ProductActionSheetState extends ConsumerState<ProductActionSheet> {
               const SizedBox(height: 8),
               TextField(
                 controller: _notesController,
+                textInputAction: TextInputAction.done,
                 decoration: InputDecoration(
                   hintText: 'Contoh: Less sugar, extra ice, tanpa topping',
                   prefixIcon: const Icon(Icons.edit_note_rounded, size: 20),

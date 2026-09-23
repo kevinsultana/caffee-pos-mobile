@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../models/cart_item_model.dart';
+import '../models/order_model.dart';
 import '../models/product_model.dart';
 
 @immutable
@@ -11,13 +12,26 @@ class CartState {
   final DiningOption diningOption;
   final String customerName;
   final String? tableNumber;
+  final String queueInput; // Angka antrean yang diinput kasir
+  final String? activeQrOrderId;
+  final String? activeQrToken;
 
   const CartState({
     this.items = const [],
     this.diningOption = DiningOption.dineIn,
     this.customerName = '',
     this.tableNumber,
+    this.queueInput = '',
+    this.activeQrOrderId,
+    this.activeQrToken,
   });
+
+  String get fullQueueNumber {
+    if (queueInput.trim().isEmpty) return '';
+    return '${diningOption.shortCode}-${queueInput.trim().padLeft(3, '0')}';
+  }
+
+  bool get hasActiveQrOrder => activeQrOrderId != null && activeQrOrderId!.isNotEmpty;
 
   int get totalItems => items.fold(0, (sum, item) => sum + item.quantity);
 
@@ -40,12 +54,18 @@ class CartState {
     DiningOption? diningOption,
     String? customerName,
     String? Function()? tableNumber,
+    String? queueInput,
+    String? Function()? activeQrOrderId,
+    String? Function()? activeQrToken,
   }) {
     return CartState(
       items: items ?? this.items,
       diningOption: diningOption ?? this.diningOption,
       customerName: customerName ?? this.customerName,
       tableNumber: tableNumber != null ? tableNumber() : this.tableNumber,
+      queueInput: queueInput ?? this.queueInput,
+      activeQrOrderId: activeQrOrderId != null ? activeQrOrderId() : this.activeQrOrderId,
+      activeQrToken: activeQrToken != null ? activeQrToken() : this.activeQrToken,
     );
   }
 }
@@ -146,6 +166,59 @@ class CartNotifier extends Notifier<CartState> {
     state = state.copyWith(items: updatedList);
   }
 
+  /// Update catatan (notes) item yang sudah ada di keranjang
+  void updateItemNotes(String itemId, String? notes) {
+    final cleanNotes = notes?.trim().isEmpty == true ? null : notes?.trim();
+    final itemIndex = state.items.indexWhere((item) => item.id == itemId);
+    if (itemIndex == -1) return;
+
+    final currentItem = state.items[itemIndex];
+    if ((currentItem.notes?.trim() ?? '') == (cleanNotes ?? '')) return;
+
+    // ID Komposit baru berdasarkan Produk, Varian, dan Catatan baru
+    final newCompositeId = '${currentItem.productId}-${currentItem.variantId ?? "def"}-${cleanNotes ?? ""}';
+
+    // Cek apakah item lain dengan kombinasi ini sudah ada di keranjang
+    final otherItemIndex = state.items.indexWhere(
+      (item) => item.id == newCompositeId && item.id != itemId,
+    );
+
+    if (otherItemIndex != -1) {
+      // Gabungkan kuantitas item yang diedit ke item yang sudah ada
+      final targetItem = state.items[otherItemIndex];
+      final mergedQuantity = targetItem.quantity + currentItem.quantity;
+      final mergedItem = targetItem.copyWith(quantity: mergedQuantity);
+
+      final resultList = <CartItemModel>[];
+      for (final item in state.items) {
+        if (item.id == itemId) {
+          // Lewatkan item lama yang digabungkan
+          continue;
+        } else if (item.id == newCompositeId) {
+          resultList.add(mergedItem);
+        } else {
+          resultList.add(item);
+        }
+      }
+      state = state.copyWith(items: resultList);
+    } else {
+      // Perbarui catatan dan composite ID pada item yang bersangkutan
+      final updatedList = List<CartItemModel>.from(state.items);
+      updatedList[itemIndex] = CartItemModel(
+        id: newCompositeId,
+        productId: currentItem.productId,
+        productName: currentItem.productName,
+        productImageUrl: currentItem.productImageUrl,
+        variantId: currentItem.variantId,
+        variantName: currentItem.variantName,
+        unitPrice: currentItem.unitPrice,
+        quantity: currentItem.quantity,
+        notes: cleanNotes,
+      );
+      state = state.copyWith(items: updatedList);
+    }
+  }
+
   /// Ganti opsi makan (Dine-in vs Takeaway)
   void setDiningOption(DiningOption option) {
     state = state.copyWith(diningOption: option);
@@ -159,6 +232,74 @@ class CartNotifier extends Notifier<CartState> {
   /// Update nomor meja
   void setTableNumber(String? table) {
     state = state.copyWith(tableNumber: () => table);
+  }
+
+  /// Update input digit nomor antrean (hanya angka)
+  void setQueueInput(String digits) {
+    final cleaned = digits.replaceAll(RegExp(r'\D'), '');
+    state = state.copyWith(queueInput: cleaned);
+  }
+
+  /// Muat pesanan QR Online ke dalam keranjang
+  void loadQrOrder({
+    required OrderModel order,
+    required List<ProductModel> catalogProducts,
+  }) {
+    final List<CartItemModel> mappedItems = [];
+    for (final it in order.items) {
+      final cleanNotes = it.notes?.trim().isEmpty == true ? null : it.notes?.trim();
+      final compositeId = '${it.productId}-${it.variantId ?? "def"}-${cleanNotes ?? ""}';
+
+      // Cari thumbnail gambar produk jika cocok
+      String? imageUrl;
+      final matches = catalogProducts.where((p) => p.id == it.productId);
+      if (matches.isNotEmpty) {
+        imageUrl = matches.first.imageUrl;
+      }
+
+      mappedItems.add(CartItemModel(
+        id: compositeId,
+        productId: it.productId,
+        productName: it.productNameSnapshot,
+        productImageUrl: imageUrl,
+        variantId: it.variantId,
+        variantName: null,
+        unitPrice: it.unitPrice,
+        quantity: it.quantity,
+        notes: cleanNotes,
+      ));
+    }
+
+    // Ambil angka antrean jika ada di QR order
+    String qDigits = '';
+    DiningOption option = DiningOption.dineIn;
+    if (order.queueNumber != null && order.queueNumber!.isNotEmpty) {
+      qDigits = order.queueNumber!.replaceAll(RegExp(r'\D'), '');
+      if (order.queueNumber!.toUpperCase().startsWith('TA')) {
+        option = DiningOption.takeaway;
+      } else {
+        option = DiningOption.dineIn;
+      }
+    }
+
+    state = state.copyWith(
+      items: mappedItems,
+      customerName: order.customerNameSnapshot.trim().isNotEmpty
+          ? order.customerNameSnapshot.trim()
+          : 'Pelanggan',
+      diningOption: option,
+      queueInput: qDigits,
+      activeQrOrderId: () => order.id,
+      activeQrToken: () => order.publicQrToken ?? order.orderNumber,
+    );
+  }
+
+  /// Lepas tautan pesanan QR dan jadikan transaksi kasir biasa
+  void detachQrOrder() {
+    state = state.copyWith(
+      activeQrOrderId: () => null,
+      activeQrToken: () => null,
+    );
   }
 
   /// Kosongkan seluruh keranjang

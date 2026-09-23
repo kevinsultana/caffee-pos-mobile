@@ -280,51 +280,115 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                   ),
                   child: SafeArea(
                     top: false,
-                    child: SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Tombol 1: Cetak Ulang Struk
+                        SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            onPressed: () async {
+                              final auth = ref.read(authProvider);
+                              final printerState = ref.read(printerProvider);
+
+                              if (!printerState.isConnected) {
+                                AppToast.showWarning(
+                                  context,
+                                  'Printer belum terhubung. Buka Pengaturan Printer untuk menyambungkan.',
+                                );
+                                return;
+                              }
+
+                              final success = await ref
+                                  .read(printerProvider.notifier)
+                                  .printReceipt(
+                                    order,
+                                    storeName: auth.storeName.isNotEmpty
+                                        ? auth.storeName
+                                        : 'SCHAW CAFE',
+                                    cashierName: auth.userName,
+                                  );
+
+                              if (!mounted) return;
+                              if (success) {
+                                AppToast.showSuccess(
+                                  context,
+                                  'Struk transaksi berhasil dicetak ulang!',
+                                );
+                              } else {
+                                AppToast.showError(
+                                  context,
+                                  'Gagal mencetak struk. Periksa status printer.',
+                                );
+                              }
+                            },
+                            icon: const Icon(Icons.print_rounded, size: 20),
+                            label: const Text(
+                              'Cetak Ulang Struk',
+                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                            ),
+                          ),
                         ),
-                        onPressed: () async {
-                          final auth = ref.read(authProvider);
-                          final printerState = ref.read(printerProvider);
+                        const SizedBox(height: 10),
 
-                          if (!printerState.isConnected) {
-                            AppToast.showWarning(
-                              context,
-                              'Printer belum terhubung. Buka Pengaturan Printer untuk menyambungkan.',
-                            );
-                            return;
-                          }
+                        // Tombol 2: Cetak Ulang Tiket Dapur
+                        SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF0284C7), // Sky Blue seperti web
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            onPressed: () async {
+                              final printerState = ref.read(printerProvider);
 
-                          final success = await ref.read(printerProvider.notifier).printReceipt(
-                                order,
-                                storeName: auth.storeName.isNotEmpty ? auth.storeName : 'SCHAW CAFE',
-                                cashierName: auth.userName,
-                              );
+                              if (!printerState.isConnected) {
+                                AppToast.showWarning(
+                                  context,
+                                  'Printer belum terhubung. Buka Pengaturan Printer untuk menyambungkan.',
+                                );
+                                return;
+                              }
 
-                          if (!mounted) return;
-                          if (success) {
-                            AppToast.showSuccess(
-                              context,
-                              'Struk transaksi berhasil dicetak ulang!',
-                            );
-                          } else {
-                            AppToast.showError(
-                              context,
-                              'Gagal mencetak struk. Periksa status printer.',
-                            );
-                          }
-                        },
-                        icon: const Icon(Icons.print_rounded, size: 20),
-                        label: const Text(
-                          'Cetak Ulang Struk',
-                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                              final success = await ref
+                                  .read(printerProvider.notifier)
+                                  .printKitchenTicket(order);
+
+                              if (!mounted) return;
+                              if (success) {
+                                AppToast.showSuccess(
+                                  context,
+                                  'Tiket dapur berhasil dicetak ulang!',
+                                );
+                              } else {
+                                AppToast.showError(
+                                  context,
+                                  'Gagal mencetak tiket dapur. Periksa status printer.',
+                                );
+                              }
+                            },
+                            icon: const Icon(Icons.soup_kitchen_rounded, size: 20),
+                            label: const Text(
+                              'Cetak Ulang Tiket Dapur',
+                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
                 ),

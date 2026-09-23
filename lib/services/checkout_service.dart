@@ -92,12 +92,15 @@ class CheckoutService {
     try {
       final now = DateTime.now();
       final nowUtc = now.toUtc().toIso8601String();
-      final orderNumber = generateOrderNumber();
-      final queueNumber = await generateQueueNumber(
-        client: client,
-        storeId: storeId,
-        option: cart.diningOption,
-      );
+      
+      // Ambil nomor antrean dari cart jika sudah diisi kasir, atau generate otomatis sebagai fallback
+      final queueNumber = cart.fullQueueNumber.isNotEmpty
+          ? cart.fullQueueNumber
+          : await generateQueueNumber(
+              client: client,
+              storeId: storeId,
+              option: cart.diningOption,
+            );
 
       final changeAmount = paymentMethod == 'CASH'
           ? (cashReceived! - totalAmount)
@@ -107,32 +110,64 @@ class CheckoutService {
           ? customerName!.trim()
           : (cart.customerName.trim().isNotEmpty ? cart.customerName.trim() : 'Pelanggan');
 
-      // ── 1. INSERT KE TABEL Order ──────────────────────────────────────────
-      final orderInsertData = {
-        'storeId': storeId,
-        'createdById': dbUserId.isNotEmpty ? dbUserId : null,
-        'orderNumber': orderNumber,
-        'queueNumber': queueNumber,
-        'source': 'POS',
-        'status': 'PAID',
-        'customerNameSnapshot': custName,
-        'productSubtotal': totalAmount,
-        'promotionDiscount': 0,
-        'taxableSubtotal': totalAmount,
-        'serviceChargeRate': 0,
-        'serviceChargeAmount': 0,
-        'taxRate': 0,
-        'taxBase': 0,
-        'taxAmount': 0,
-        'grandTotal': totalAmount,
-        'roundingAmount': 0,
-        'cashPayable': totalAmount,
-        'paidAt': nowUtc,
-        'updatedAt': nowUtc,
-      };
+      late final String orderId;
+      late final String effectiveOrderNumber;
+      String? publicToken;
 
-      final orderRes = await client.from('Order').insert(orderInsertData).select().single();
-      final orderId = orderRes['id'].toString();
+      // ── 1. INSERT / UPDATE KE TABEL Order ───────────────────────────────────
+      if (cart.activeQrOrderId != null && cart.activeQrOrderId!.isNotEmpty) {
+        // Tautkan & perbarui pesanan QR online yang sudah ada
+        orderId = cart.activeQrOrderId!;
+        final orderUpdateData = {
+          'createdById': dbUserId.isNotEmpty ? dbUserId : null,
+          'queueNumber': queueNumber,
+          'status': 'PAID',
+          'customerNameSnapshot': custName,
+          'productSubtotal': totalAmount,
+          'promotionDiscount': 0,
+          'taxableSubtotal': totalAmount,
+          'grandTotal': totalAmount,
+          'roundingAmount': 0,
+          'cashPayable': totalAmount,
+          'paidAt': nowUtc,
+          'updatedAt': nowUtc,
+        };
+
+        final orderRes = await client.from('Order').update(orderUpdateData).eq('id', orderId).select().single();
+        effectiveOrderNumber = orderRes['orderNumber']?.toString() ?? generateOrderNumber();
+        publicToken = orderRes['publicQrToken']?.toString();
+
+        // Hapus item pesanan QR lama sebelum menginsert item keranjang kasir terbaru
+        await client.from('OrderItem').delete().eq('orderId', orderId);
+      } else {
+        // Buat pesanan baru langsung dari kasir POS
+        effectiveOrderNumber = generateOrderNumber();
+        final orderInsertData = {
+          'storeId': storeId,
+          'createdById': dbUserId.isNotEmpty ? dbUserId : null,
+          'orderNumber': effectiveOrderNumber,
+          'queueNumber': queueNumber,
+          'source': 'POS',
+          'status': 'PAID',
+          'customerNameSnapshot': custName,
+          'productSubtotal': totalAmount,
+          'promotionDiscount': 0,
+          'taxableSubtotal': totalAmount,
+          'serviceChargeRate': 0,
+          'serviceChargeAmount': 0,
+          'taxRate': 0,
+          'taxBase': 0,
+          'taxAmount': 0,
+          'grandTotal': totalAmount,
+          'roundingAmount': 0,
+          'cashPayable': totalAmount,
+          'paidAt': nowUtc,
+          'updatedAt': nowUtc,
+        };
+
+        final orderRes = await client.from('Order').insert(orderInsertData).select().single();
+        orderId = orderRes['id'].toString();
+      }
 
       // ── 2. INSERT KE TABEL OrderItem ──────────────────────────────────────
       final List<Map<String, dynamic>> orderItemsInsert = cart.items.map((it) {
@@ -177,10 +212,11 @@ class CheckoutService {
         id: orderId,
         storeId: storeId,
         createdById: dbUserId,
-        orderNumber: orderNumber,
+        orderNumber: effectiveOrderNumber,
         queueNumber: queueNumber,
-        source: 'POS',
+        source: cart.hasActiveQrOrder ? 'PUBLIC_QR' : 'POS',
         status: 'PAID',
+        publicQrToken: publicToken,
         customerNameSnapshot: custName,
         productSubtotal: totalAmount,
         taxableSubtotal: totalAmount,

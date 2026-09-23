@@ -1,4 +1,5 @@
 import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,7 +19,9 @@ class QrTableScreen extends ConsumerStatefulWidget {
 }
 
 class _QrTableScreenState extends ConsumerState<QrTableScreen> {
-  final TextEditingController _tableController = TextEditingController(text: 'Meja 01');
+  final TextEditingController _tableController = TextEditingController(
+    text: 'Meja 01',
+  );
   final GlobalKey _qrCardKey = GlobalKey();
 
   String _currentTable = 'Meja 01';
@@ -42,7 +45,7 @@ class _QrTableScreenState extends ConsumerState<QrTableScreen> {
 
   String _buildMenuUrl(String table) {
     final encodedTable = Uri.encodeComponent(table);
-    return 'https://schawcafe.com/menu?table=$encodedTable';
+    return 'https://caffee-pos.vercel.app/menu?table=$encodedTable';
   }
 
   Future<void> _saveQrToGallery() async {
@@ -52,7 +55,9 @@ class _QrTableScreenState extends ConsumerState<QrTableScreen> {
       // Delay singkat untuk memastikan RepaintBoundary ter-render sempurna dengan resolusi penuh
       await Future.delayed(const Duration(milliseconds: 150));
 
-      final boundary = _qrCardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      final boundary =
+          _qrCardKey.currentContext?.findRenderObject()
+              as RenderRepaintBoundary?;
       if (boundary == null) {
         throw Exception('Gagal mendeteksi tampilan kartu QR.');
       }
@@ -67,7 +72,8 @@ class _QrTableScreenState extends ConsumerState<QrTableScreen> {
       }
 
       // Sanitasi nama file agar valid di filesystem
-      final cleanFileName = 'QR_${_currentTable.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_')}';
+      final cleanFileName =
+          'QR_${_currentTable.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_')}';
 
       // Simpan ke galeri menggunakan package Gal (MediaStore API modern)
       await Gal.putImageBytes(pngBytes, name: cleanFileName);
@@ -100,10 +106,7 @@ class _QrTableScreenState extends ConsumerState<QrTableScreen> {
       if (!mounted) return;
       setState(() => _isSaving = false);
 
-      AppToast.showError(
-        context,
-        'Terjadi kesalahan: ${e.toString()}',
-      );
+      AppToast.showError(context, 'Terjadi kesalahan: ${e.toString()}');
     }
   }
 
@@ -111,7 +114,9 @@ class _QrTableScreenState extends ConsumerState<QrTableScreen> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
     final printerState = ref.watch(printerProvider);
-    final storeName = authState.storeName.isNotEmpty ? authState.storeName : 'SCHAW CAFE';
+    final storeName = authState.storeName.isNotEmpty
+        ? authState.storeName
+        : 'SCHAW CAFE';
     final qrUrl = _buildMenuUrl(_currentTable);
 
     return Scaffold(
@@ -155,11 +160,19 @@ class _QrTableScreenState extends ConsumerState<QrTableScreen> {
                                 onSubmitted: (_) => _generateQr(),
                                 decoration: InputDecoration(
                                   hintText: 'Contoh: Meja 01, VIP 2, Outdoor 3',
-                                  prefixIcon: const Icon(Icons.table_restaurant_rounded, size: 20),
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                  prefixIcon: const Icon(
+                                    Icons.table_restaurant_rounded,
+                                    size: 20,
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 12,
+                                  ),
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(color: AppColors.border),
+                                    borderSide: const BorderSide(
+                                      color: AppColors.border,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -185,19 +198,34 @@ class _QrTableScreenState extends ConsumerState<QrTableScreen> {
                         Wrap(
                           spacing: 8,
                           runSpacing: 6,
-                          children: ['Meja 01', 'Meja 02', 'Meja 03', 'Meja 04', 'VIP 1', 'Outdoor 1'].map((t) {
-                            return ActionChip(
-                              label: Text(t, style: const TextStyle(fontSize: 11)),
-                              backgroundColor: _currentTable == t ? AppColors.primaryContainer : AppColors.surfaceMuted,
-                              side: BorderSide(
-                                color: _currentTable == t ? AppColors.primary : AppColors.border,
-                              ),
-                              onPressed: () {
-                                _tableController.text = t;
-                                _generateQr();
-                              },
-                            );
-                          }).toList(),
+                          children:
+                              [
+                                'Meja 01',
+                                'Meja 02',
+                                'Meja 03',
+                                'Meja 04',
+                                'VIP 1',
+                                'Outdoor 1',
+                              ].map((t) {
+                                return ActionChip(
+                                  label: Text(
+                                    t,
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                  backgroundColor: _currentTable == t
+                                      ? AppColors.primaryContainer
+                                      : AppColors.surfaceMuted,
+                                  side: BorderSide(
+                                    color: _currentTable == t
+                                        ? AppColors.primary
+                                        : AppColors.border,
+                                  ),
+                                  onPressed: () {
+                                    _tableController.text = t;
+                                    _generateQr();
+                                  },
+                                );
+                              }).toList(),
                         ),
                       ],
                     ),
@@ -212,7 +240,10 @@ class _QrTableScreenState extends ConsumerState<QrTableScreen> {
                     key: _qrCardKey,
                     child: Container(
                       width: 320,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 28,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(24),
@@ -271,7 +302,10 @@ class _QrTableScreenState extends ConsumerState<QrTableScreen> {
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(18),
-                              border: Border.all(color: AppColors.borderLight, width: 1.5),
+                              border: Border.all(
+                                color: AppColors.borderLight,
+                                width: 1.5,
+                              ),
                             ),
                             child: QrImageView(
                               data: qrUrl,
@@ -362,12 +396,20 @@ class _QrTableScreenState extends ConsumerState<QrTableScreen> {
                         ? const SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
                         : const Icon(Icons.download_rounded, size: 20),
                     label: Text(
-                      _isSaving ? 'Menyimpan ke Galeri...' : 'Simpan ke Galeri Perangkat',
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      _isSaving
+                          ? 'Menyimpan ke Galeri...'
+                          : 'Simpan ke Galeri Perangkat',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),
@@ -399,7 +441,11 @@ class _QrTableScreenState extends ConsumerState<QrTableScreen> {
                       duration: const Duration(seconds: 2),
                     );
                   },
-                  icon: const Icon(Icons.print_rounded, size: 18, color: AppColors.textSecondary),
+                  icon: const Icon(
+                    Icons.print_rounded,
+                    size: 18,
+                    color: AppColors.textSecondary,
+                  ),
                   label: const Text(
                     'Cetak Tent Card ke Printer Bluetooth',
                     style: TextStyle(
@@ -421,7 +467,11 @@ class _QrTableScreenState extends ConsumerState<QrTableScreen> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.link_rounded, size: 16, color: AppColors.textMuted),
+                      const Icon(
+                        Icons.link_rounded,
+                        size: 16,
+                        color: AppColors.textMuted,
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(

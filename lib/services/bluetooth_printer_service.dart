@@ -131,6 +131,9 @@ class BluetoothPrinterService {
 
     for (final item in order.items) {
       bytes.addAll(utf8.encode('${item.productNameSnapshot}\n'));
+      if (item.variantNameSnapshot != null && item.variantNameSnapshot!.isNotEmpty) {
+        bytes.addAll(utf8.encode('  (${item.variantNameSnapshot})\n'));
+      }
       final priceDetail = '${item.quantity} x ${currencyFmt.format(item.unitPrice)}';
       bytes.addAll(utf8.encode(_formatRow('  $priceDetail', currencyFmt.format(item.subtotal))));
 
@@ -168,6 +171,92 @@ class BluetoothPrinterService {
     bytes.addAll(lineFeed);
     bytes.addAll(lineFeed);
     bytes.addAll(lineFeed); // Feed paper agar struk bisa disobek
+
+    // Kirim bytes ke printer thermal
+    return await PrintBluetoothThermal.writeBytes(bytes);
+  }
+
+  /// Cetak tiket dapur (kitchen ticket) menggunakan perintah standar ESC/POS
+  static Future<bool> printKitchenTicket(OrderModel order) async {
+    final connected = await isConnected();
+    if (!connected) return false;
+
+    final bytes = <int>[];
+
+    // ── Command ESC/POS Dasar ─────────────────────────────────────────────
+    const escInit = [27, 64]; // Reset printer
+    const alignCenter = [27, 97, 1]; // Rata tengah
+    const alignLeft = [27, 97, 0]; // Rata kiri
+    const boldOn = [27, 69, 1]; // Tebal aktif
+    const boldOff = [27, 69, 0]; // Tebal mati
+    const textDoubleHeight = [29, 33, 16]; // Double height (GS ! 16)
+    const textDoubleBoth = [29, 33, 17]; // Double width + double height (GS ! 17)
+    const textNormal = [29, 33, 0]; // Ukuran teks normal
+    const lineFeed = [10]; // Newline
+
+    // 1. Inisialisasi
+    bytes.addAll(escInit);
+
+    // 2. Header Tiket Dapur (Center & Bold)
+    bytes.addAll(alignCenter);
+    bytes.addAll(boldOn);
+    bytes.addAll(textDoubleHeight);
+    bytes.addAll(utf8.encode('== TIKET DAPUR ==\n'));
+    bytes.addAll(textNormal);
+
+    final queueNum = order.queueNumber ?? '-';
+    final isTakeaway = !order.isDineIn;
+    final typeBadge = isTakeaway ? '[ BUNGKUS / TAKEAWAY ]' : '[ DINE IN / DI TEMPAT ]';
+    bytes.addAll(utf8.encode('$typeBadge\n'));
+    bytes.addAll(boldOff);
+    bytes.addAll(utf8.encode('================================\n'));
+
+    // 3. Nomor Antrean Besar & Jelas untuk Dapur
+    if (queueNum.isNotEmpty && queueNum != '-') {
+      bytes.addAll(alignCenter);
+      bytes.addAll(utf8.encode('NOMOR ANTREAN\n'));
+      bytes.addAll(boldOn);
+      bytes.addAll(textDoubleBoth);
+      bytes.addAll(utf8.encode('$queueNum\n'));
+      bytes.addAll(textNormal);
+      bytes.addAll(boldOff);
+      bytes.addAll(utf8.encode('--------------------------------\n'));
+    }
+
+    // 4. Meta Order (Rata Kiri)
+    bytes.addAll(alignLeft);
+    bytes.addAll(utf8.encode('No. Order : ${order.orderNumber}\n'));
+    bytes.addAll(utf8.encode('Waktu     : ${order.formattedDate}\n'));
+    final custName = order.customerNameSnapshot.trim().isNotEmpty ? order.customerNameSnapshot : 'Umum';
+    bytes.addAll(utf8.encode('Pelanggan : $custName\n'));
+    bytes.addAll(utf8.encode('Tipe      : ${isTakeaway ? 'Takeaway (Bungkus)' : 'Dine In (Makan di Tempat)'}\n'));
+    bytes.addAll(utf8.encode('Sumber    : ${order.source == 'PUBLIC_QR' ? 'QR Online' : 'Kasir POS'}\n'));
+    bytes.addAll(utf8.encode('--------------------------------\n'));
+
+    // 5. Items Pesanan (Dapur — TANPA HARGA)
+    for (final item in order.items) {
+      bytes.addAll(boldOn);
+      bytes.addAll(utf8.encode('${item.quantity}x ${item.productNameSnapshot}\n'));
+      bytes.addAll(boldOff);
+
+      if (item.variantNameSnapshot != null && item.variantNameSnapshot!.isNotEmpty) {
+        bytes.addAll(utf8.encode('   Varian: ${item.variantNameSnapshot}\n'));
+      }
+      if (item.notes != null && item.notes!.isNotEmpty) {
+        bytes.addAll(utf8.encode('   *Catatan: ${item.notes}\n'));
+      }
+    }
+
+    bytes.addAll(utf8.encode('================================\n'));
+
+    // 6. Penutup Tiket Dapur
+    bytes.addAll(alignCenter);
+    bytes.addAll(boldOn);
+    bytes.addAll(utf8.encode('*** SELESAIKAN PESANAN ***\n'));
+    bytes.addAll(boldOff);
+    bytes.addAll(lineFeed);
+    bytes.addAll(lineFeed);
+    bytes.addAll(lineFeed); // Feed paper agar tiket bisa disobek
 
     // Kirim bytes ke printer thermal
     return await PrintBluetoothThermal.writeBytes(bytes);

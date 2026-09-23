@@ -6,9 +6,11 @@ import 'package:intl/intl.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../models/cart_item_model.dart';
+import '../../models/order_model.dart';
 import '../../models/product_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/cart_provider.dart';
+import '../../providers/online_orders_provider.dart';
 import '../../providers/product_provider.dart';
 import '../../providers/shift_provider.dart';
 import '../../widgets/product_action_sheet.dart';
@@ -25,12 +27,121 @@ class PosScreen extends ConsumerStatefulWidget {
 class _PosScreenState extends ConsumerState<PosScreen> {
   final TextEditingController _searchController = TextEditingController();
   Timer? _debounceTimer;
+  int _selectedPosTab = 0; // 0: Katalog Menu, 1: Pesanan QR Online
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() {
+      ref.read(onlineOrdersProvider.notifier).fetchPendingOrders();
+    });
+  }
 
   @override
   void dispose() {
     _debounceTimer?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _openQrOrder(OrderModel order) {
+    final cart = ref.read(cartProvider);
+    final catalogState = ref.read(productProvider);
+
+    if (cart.items.isNotEmpty && cart.activeQrOrderId != order.id) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: const Text('Ganti Isi Keranjang?'),
+          content: const Text(
+            'Keranjang kasir saat ini memiliki pesanan lain. Timpa isi keranjang dengan pesanan QR ini?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Batal'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () {
+                Navigator.pop(ctx);
+                _executeLoadQrOrder(order, catalogState.products);
+              },
+              child: const Text('Muat Pesanan'),
+            ),
+          ],
+        ),
+      );
+    } else {
+      _executeLoadQrOrder(order, catalogState.products);
+    }
+  }
+
+  void _executeLoadQrOrder(OrderModel order, List<ProductModel> catalogProducts) {
+    ref.read(cartProvider.notifier).loadQrOrder(
+      order: order,
+      catalogProducts: catalogProducts,
+    );
+
+    AppToast.showSuccess(
+      context,
+      'Pesanan QR #${order.publicQrToken ?? order.orderNumber} dimuat ke keranjang',
+    );
+
+    // Beralih ke tab katalog menu dan langsung buka CartSheet
+    setState(() {
+      _selectedPosTab = 0;
+    });
+
+    CartSheet.show(context);
+  }
+
+  void _confirmCancelQrOrder(OrderModel order) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text('Batalkan Pesanan QR?'),
+        content: Text(
+          'Yakin ingin membatalkan dan menghapus pesanan QR #${order.publicQrToken ?? order.orderNumber} dari ${order.customerNameSnapshot}?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final success = await ref
+                  .read(onlineOrdersProvider.notifier)
+                  .cancelOrder(order.id);
+
+              if (mounted) {
+                if (success) {
+                  final cart = ref.read(cartProvider);
+                  if (cart.activeQrOrderId == order.id) {
+                    ref.read(cartProvider.notifier).clearCart();
+                  }
+                  AppToast.showSuccess(context, 'Pesanan QR berhasil dibatalkan');
+                } else {
+                  AppToast.showError(context, 'Gagal membatalkan pesanan QR');
+                }
+              }
+            },
+            child: const Text('Batalkan Pesanan'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Menangani pencarian dengan Debounce 500ms
@@ -188,6 +299,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     final authState = ref.watch(authProvider);
     final catalogState = ref.watch(productProvider);
     final cartState = ref.watch(cartProvider);
+    final onlineOrders = ref.watch(onlineOrdersProvider);
 
     // 1. Loading Cek Shift
     if (shiftState.isLoading && shiftState.activeShift == null) {
@@ -223,25 +335,36 @@ class _PosScreenState extends ConsumerState<PosScreen> {
       );
     }
 
-    // 3. Shift Aktif Valid: Buka Akses Katalog Kasir (POS)
+    // 3. Shift Aktif Valid: Buka Akses Kasir (POS)
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Stack(
         children: [
-          RefreshIndicator(
-            onRefresh: () => ref.read(productProvider.notifier).fetchCatalog(),
-            child: CustomScrollView(
-              slivers: [
-                // 1. Search Bar Header
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: AppColors.border),
-                      ),
+          if (_selectedPosTab == 0)
+            RefreshIndicator(
+              onRefresh: () async {
+                await Future.wait([
+                  ref.read(productProvider.notifier).fetchCatalog(),
+                  ref.read(onlineOrdersProvider.notifier).fetchPendingOrders(),
+                ]);
+              },
+              child: CustomScrollView(
+                slivers: [
+                  // Tab Switcher Header (Katalog Menu vs Pesanan QR Online)
+                  SliverToBoxAdapter(
+                    child: _buildPosTabSwitcher(onlineOrders),
+                  ),
+
+                  // 1. Search Bar Header
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppColors.border),
+                        ),
                       child: TextField(
                         controller: _searchController,
                         onChanged: _onSearchChanged,
@@ -362,6 +485,10 @@ class _PosScreenState extends ConsumerState<PosScreen> {
             ),
           ),
 
+          // Tampilan Tab Pesanan QR Online
+          if (_selectedPosTab == 1)
+            _buildOnlineOrdersView(context, onlineOrders, cartState),
+
           // 4. Floating Cart Bar (muncul jika ada item di keranjang)
           if (cartState.isNotEmpty)
             Positioned(
@@ -371,6 +498,473 @@ class _PosScreenState extends ConsumerState<PosScreen> {
               child: _buildFloatingCartBar(context, cartState),
             ),
         ],
+      ),
+    );
+  }
+
+  /// Tab Selector Switcher (Katalog Menu POS vs Pesanan QR Online)
+  Widget _buildPosTabSwitcher(OnlineOrdersState onlineOrders) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: InkWell(
+                onTap: () => setState(() => _selectedPosTab = 0),
+                borderRadius: BorderRadius.circular(10),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  padding: const EdgeInsets.symmetric(vertical: 9),
+                  decoration: BoxDecoration(
+                    color: _selectedPosTab == 0 ? AppColors.primary : Colors.transparent,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.restaurant_menu_rounded,
+                        size: 16,
+                        color: _selectedPosTab == 0 ? Colors.white : AppColors.textSecondary,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Katalog Menu',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: _selectedPosTab == 0 ? FontWeight.bold : FontWeight.w600,
+                          color: _selectedPosTab == 0 ? Colors.white : AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: InkWell(
+                onTap: () {
+                  setState(() => _selectedPosTab = 1);
+                  ref.read(onlineOrdersProvider.notifier).fetchPendingOrders();
+                },
+                borderRadius: BorderRadius.circular(10),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  padding: const EdgeInsets.symmetric(vertical: 9),
+                  decoration: BoxDecoration(
+                    color: _selectedPosTab == 1 ? AppColors.primary : Colors.transparent,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.qr_code_scanner_rounded,
+                        size: 16,
+                        color: _selectedPosTab == 1 ? Colors.white : AppColors.textSecondary,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Pesanan QR',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: _selectedPosTab == 1 ? FontWeight.bold : FontWeight.w600,
+                          color: _selectedPosTab == 1 ? Colors.white : AppColors.textSecondary,
+                        ),
+                      ),
+                      if (onlineOrders.pendingCount > 0) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: _selectedPosTab == 1 ? Colors.white : AppColors.error,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            '${onlineOrders.pendingCount}',
+                            style: TextStyle(
+                              color: _selectedPosTab == 1 ? AppColors.primaryDark : Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Tampilan Tab Daftar Pesanan QR Online
+  Widget _buildOnlineOrdersView(
+    BuildContext context,
+    OnlineOrdersState onlineOrders,
+    CartState cartState,
+  ) {
+    return RefreshIndicator(
+      onRefresh: () => ref.read(onlineOrdersProvider.notifier).fetchPendingOrders(),
+      child: CustomScrollView(
+        slivers: [
+          // Tab Switcher Header
+          SliverToBoxAdapter(
+            child: _buildPosTabSwitcher(onlineOrders),
+          ),
+
+          if (onlineOrders.isLoading && onlineOrders.orders.isEmpty)
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (onlineOrders.orders.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 48),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(22),
+                        decoration: const BoxDecoration(
+                          color: AppColors.surfaceMuted,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.qr_code_2_rounded,
+                          size: 52,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      const Text(
+                        'Tidak Ada Pesanan Online Menunggu',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Saat pelanggan memesan melalui menu QR publik di meja, pesanan yang menunggu pembayaran akan otomatis tampil di sini.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                          height: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      OutlinedButton.icon(
+                        onPressed: () => ref.read(onlineOrdersProvider.notifier).fetchPendingOrders(),
+                        icon: const Icon(Icons.refresh_rounded, size: 18),
+                        label: const Text('Segarkan Antrean'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          else
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                8,
+                16,
+                cartState.isNotEmpty ? 100 : 24,
+              ),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    final order = onlineOrders.orders[index];
+                    return _buildOnlineOrderCard(context, order);
+                  },
+                  childCount: onlineOrders.orders.length,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Kartu Rincian Pesanan QR Online
+  Widget _buildOnlineOrderCard(BuildContext context, OrderModel order) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header: Token Badge, Order Number & Countdown
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryContainer,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                      ),
+                      child: Text(
+                        order.publicQrToken != null
+                            ? '#${order.publicQrToken}'
+                            : '#QR',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          fontFamily: 'monospace',
+                          color: AppColors.primaryDark,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '#${order.orderNumber}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textMuted,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ],
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: order.minutesLeft <= 10 ? AppColors.roseLight : AppColors.surfaceMuted,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.timer_outlined,
+                        size: 12,
+                        color: order.minutesLeft <= 10 ? AppColors.rose : AppColors.textSecondary,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${order.minutesLeft} mnt tersisa',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: order.minutesLeft <= 10 ? AppColors.rose : AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Info Pemesan
+            Row(
+              children: [
+                const Icon(Icons.person_outline_rounded, size: 16, color: AppColors.textSecondary),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    order.customerNameSnapshot,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+                if (order.queueNumber != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: order.queueNumber!.startsWith('TA') ? AppColors.amberLight : AppColors.primaryContainer,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'Antrean: ${order.queueNumber}',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: order.queueNumber!.startsWith('TA') ? AppColors.amber : AppColors.primaryDark,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            if (order.customerPhoneSnapshot != null && order.customerPhoneSnapshot!.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Padding(
+                padding: const EdgeInsets.only(left: 22),
+                child: Text(
+                  'WA: ${order.customerPhoneSnapshot}',
+                  style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                ),
+              ),
+            ],
+            const SizedBox(height: 2),
+            Padding(
+              padding: const EdgeInsets.only(left: 22),
+              child: Text(
+                'Dipesan: ${order.formattedTime}',
+                style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Rincian Item Pesanan
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceMuted,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Column(
+                children: order.items.map((it) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '${it.quantity}x ${it.productNameSnapshot}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              it.formattedSubtotal,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'monospace',
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (it.notes != null && it.notes!.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              const Icon(Icons.note_alt_outlined, size: 11, color: AppColors.amber),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  it.notes!,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontStyle: FontStyle.italic,
+                                    color: AppColors.amber,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // Total Tagihan & Tombol Aksi
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Total Tagihan:',
+                      style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
+                    ),
+                    Text(
+                      order.formattedGrandTotal,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.primaryDark,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ],
+                ),
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => _confirmCancelQrOrder(order),
+                      icon: const Icon(Icons.delete_outline_rounded, color: AppColors.error, size: 20),
+                      tooltip: 'Batalkan Pesanan QR',
+                    ),
+                    const SizedBox(width: 4),
+                    ElevatedButton.icon(
+                      onPressed: () => _openQrOrder(order),
+                      icon: const Icon(Icons.shopping_bag_outlined, size: 16),
+                      label: const Row(
+                        children: [
+                          Text('Buka di Kasir', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          SizedBox(width: 4),
+                          Icon(Icons.arrow_forward_rounded, size: 14),
+                        ],
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

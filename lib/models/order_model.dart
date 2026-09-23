@@ -9,6 +9,7 @@ class OrderItemModel {
   final String orderId;
   final String productId;
   final String? variantId;
+  final String? variantNameSnapshot;
   final String productNameSnapshot;
   final int quantity;
   final double unitPrice;
@@ -20,6 +21,7 @@ class OrderItemModel {
     required this.orderId,
     required this.productId,
     this.variantId,
+    this.variantNameSnapshot,
     required this.productNameSnapshot,
     required this.quantity,
     required this.unitPrice,
@@ -45,6 +47,7 @@ class OrderItemModel {
       orderId: map['orderId']?.toString() ?? '',
       productId: map['productId']?.toString() ?? '',
       variantId: map['variantId']?.toString(),
+      variantNameSnapshot: map['variantNameSnapshot']?.toString(),
       productNameSnapshot: map['productNameSnapshot']?.toString() ?? 'Item',
       quantity: (map['quantity'] as num?)?.toInt() ?? 1,
       unitPrice: (map['unitPrice'] is num)
@@ -132,6 +135,7 @@ class OrderModel {
   final String? queueNumber;
   final String source;
   final String status;
+  final String? publicQrToken;
   final String customerNameSnapshot;
   final String? customerPhoneSnapshot;
   final double productSubtotal;
@@ -139,6 +143,7 @@ class OrderModel {
   final double taxableSubtotal;
   final double grandTotal;
   final double cashPayable;
+  final DateTime? expiresAt;
   final DateTime? paidAt;
   final DateTime createdAt;
   final List<OrderItemModel> items;
@@ -153,6 +158,7 @@ class OrderModel {
     this.queueNumber,
     this.source = 'POS',
     this.status = 'PAID',
+    this.publicQrToken,
     required this.customerNameSnapshot,
     this.customerPhoneSnapshot,
     required this.productSubtotal,
@@ -160,6 +166,7 @@ class OrderModel {
     required this.taxableSubtotal,
     required this.grandTotal,
     required this.cashPayable,
+    this.expiresAt,
     this.paidAt,
     required this.createdAt,
     this.items = const [],
@@ -191,6 +198,17 @@ class OrderModel {
 
   bool get isDineIn => queueNumber?.startsWith('A') ?? false;
   String get diningLabel => isDineIn ? 'Dine-in' : 'Takeaway';
+
+  int get minutesLeft {
+    if (expiresAt == null) return 0;
+    final diff = expiresAt!.toLocal().difference(DateTime.now()).inMinutes;
+    return diff < 0 ? 0 : diff;
+  }
+
+  bool get isExpired {
+    if (expiresAt == null) return false;
+    return DateTime.now().isAfter(expiresAt!.toLocal());
+  }
 
   factory OrderModel.fromMap(Map<String, dynamic> map) {
     // Parse order items
@@ -228,6 +246,7 @@ class OrderModel {
       queueNumber: map['queueNumber']?.toString(),
       source: map['source']?.toString() ?? 'POS',
       status: map['status']?.toString() ?? 'PAID',
+      publicQrToken: map['publicQrToken']?.toString(),
       customerNameSnapshot: map['customerNameSnapshot']?.toString() ?? 'Pelanggan',
       customerPhoneSnapshot: map['customerPhoneSnapshot']?.toString(),
       productSubtotal: (map['productSubtotal'] is num)
@@ -245,6 +264,7 @@ class OrderModel {
       cashPayable: (map['cashPayable'] is num)
           ? (map['cashPayable'] as num).toDouble()
           : double.tryParse(map['cashPayable']?.toString() ?? '0') ?? 0.0,
+      expiresAt: tryParseDateTime(map['expiresAt']),
       paidAt: tryParseDateTime(map['paidAt']),
       createdAt: parseDateTime(map['createdAt']),
       items: itemsList,
