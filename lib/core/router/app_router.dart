@@ -6,6 +6,7 @@ import '../../providers/auth_provider.dart';
 import '../../screens/auth/login_screen.dart';
 import '../../screens/history/history_screen.dart';
 import '../../screens/main_layout.dart';
+import '../../screens/pos/checkout_screen.dart';
 import '../../screens/pos/pos_screen.dart';
 import '../../screens/qr_table/qr_table_screen.dart';
 import '../../screens/settings/printer_settings_screen.dart';
@@ -52,6 +53,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/settings/printer',
         builder: (context, state) => const PrinterSettingsScreen(),
+      ),
+      GoRoute(
+        path: '/pos/checkout',
+        builder: (context, state) => const CheckoutScreen(),
       ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {
