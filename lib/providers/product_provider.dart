@@ -101,7 +101,7 @@ class ProductCatalogNotifier extends Notifier<ProductCatalogState> {
       if (storeId.isNotEmpty) {
         prodBuilder = prodBuilder.eq('storeId', storeId);
       }
-      final prodResponse = await prodBuilder.order('name');
+      final prodResponse = await prodBuilder.order('name').limit(500);
       final List<ProductModel> fetchedProducts = (prodResponse as List)
           .map((p) => ProductModel.fromMap(p as Map<String, dynamic>))
           .toList();
