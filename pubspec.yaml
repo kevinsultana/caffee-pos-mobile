@@ -17,6 +17,8 @@ dependencies:
   flutter_dotenv: ^6.0.1
   qr_flutter: ^4.1.0
   gal: ^2.3.3
+  bcrypt: ^1.2.0
+  shared_preferences: ^2.5.5
 
 dev_dependencies:
   flutter_test:

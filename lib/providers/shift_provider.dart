@@ -6,25 +6,47 @@ import 'auth_provider.dart';
 
 @immutable
 class ShiftState {
-  final ShiftModel? activeShift;
+  final ShiftModel? activeShift; // Shift aktif milik user yang sedang login
+  final List<ActiveStoreShiftInfo> otherActiveShifts; // Shift kasir lain yang sedang OPEN di toko
+  final int maxActiveShifts; // Batas maksimal shift aktif toko dari StoreSettings (default 1)
   final bool isLoading;
   final String? errorMessage;
 
   const ShiftState({
     this.activeShift,
+    this.otherActiveShifts = const [],
+    this.maxActiveShifts = 1,
     this.isLoading = false,
     this.errorMessage,
   });
 
+  /// Apakah user yang sedang login memiliki shift aktif
   bool get hasActiveShift => activeShift != null;
+
+  /// Total shift berstatus 'OPEN' di toko (termasuk milik user ini)
+  int get totalStoreOpenShifts => (hasActiveShift ? 1 : 0) + otherActiveShifts.length;
+
+  /// Apakah limit maksimal shift aktif di toko sudah terpenuhi
+  bool get isLimitReached => totalStoreOpenShifts >= maxActiveShifts;
+
+  /// Apakah user saat ini berhak membuka shift baru:
+  /// Syarat: Belum punya shift aktif DAN limit shift toko belum tercapai
+  bool get canOpenNewShift => !hasActiveShift && !isLimitReached;
+
+  /// Apakah akses kasir / shift user ini terhalang oleh shift kasir lain yang sedang aktif dan kuota toko penuh
+  bool get isBlockedByOtherShift => !hasActiveShift && otherActiveShifts.isNotEmpty && isLimitReached;
 
   ShiftState copyWith({
     ShiftModel? Function()? activeShift,
+    List<ActiveStoreShiftInfo>? otherActiveShifts,
+    int? maxActiveShifts,
     bool? isLoading,
     String? Function()? errorMessage,
   }) {
     return ShiftState(
       activeShift: activeShift != null ? activeShift() : this.activeShift,
+      otherActiveShifts: otherActiveShifts ?? this.otherActiveShifts,
+      maxActiveShifts: maxActiveShifts ?? this.maxActiveShifts,
       isLoading: isLoading ?? this.isLoading,
       errorMessage: errorMessage != null ? errorMessage() : this.errorMessage,
     );
@@ -51,7 +73,7 @@ class ShiftNotifier extends Notifier<ShiftState> {
     return const ShiftState(isLoading: false);
   }
 
-  /// Cek apakah kasir yang sedang login memiliki shift berstatus 'OPEN' di database
+  /// Cek status shift kasir yang login, kuota maxActiveShifts toko, dan shift kasir lain
   Future<void> checkActiveShift() async {
     final auth = ref.read(authProvider);
     if (!auth.isAuthenticated || auth.dbUserId.isEmpty) {
@@ -63,9 +85,10 @@ class ShiftNotifier extends Notifier<ShiftState> {
 
     try {
       final supaClient = Supabase.instance.client;
+      final storeId = auth.storeId;
 
-      // Query tabel public."Shift" dengan case-sensitive 'Shift'
-      final response = await supaClient
+      // 1. Cek shift aktif milik user yang sedang login
+      final userShiftResp = await supaClient
           .from('Shift')
           .select('id, storeId, userId, status, openingCash, expectedCash, actualCash, difference, depositedCash, openedAt, closedAt, User:User(id, name, username)')
           .eq('userId', auth.dbUserId)
@@ -74,20 +97,45 @@ class ShiftNotifier extends Notifier<ShiftState> {
           .limit(1)
           .maybeSingle();
 
-      if (response != null) {
-        final shift = ShiftModel.fromMap(response);
-        state = state.copyWith(
-          activeShift: () => shift,
-          isLoading: false,
-          errorMessage: () => null,
-        );
-      } else {
-        state = state.copyWith(
-          activeShift: () => null,
-          isLoading: false,
-          errorMessage: () => null,
-        );
+      final currentShift = userShiftResp != null ? ShiftModel.fromMap(userShiftResp) : null;
+
+      // 2. Ambil pengaturan batas shift toko (maxActiveShifts)
+      int maxActiveShifts = 1;
+      if (storeId.isNotEmpty) {
+        final storeSettingsResp = await supaClient
+            .from('StoreSettings')
+            .select('maxActiveShifts')
+            .eq('storeId', storeId)
+            .maybeSingle();
+
+        if (storeSettingsResp != null && storeSettingsResp['maxActiveShifts'] != null) {
+          maxActiveShifts = (storeSettingsResp['maxActiveShifts'] as num).toInt();
+        }
       }
+
+      // 3. Cek shift aktif milik kasir lain yang sedang berjalan di toko
+      var otherShiftsQuery = supaClient
+          .from('Shift')
+          .select('id, storeId, userId, status, openingCash, openedAt, User:User(id, name, username)')
+          .eq('status', 'OPEN')
+          .neq('userId', auth.dbUserId);
+
+      if (storeId.isNotEmpty) {
+        otherShiftsQuery = otherShiftsQuery.eq('storeId', storeId);
+      }
+
+      final otherShiftsResp = await otherShiftsQuery.order('openedAt', ascending: false);
+      final List<ActiveStoreShiftInfo> otherShifts = (otherShiftsResp as List)
+          .map((s) => ActiveStoreShiftInfo.fromMap(s as Map<String, dynamic>))
+          .toList();
+
+      state = state.copyWith(
+        activeShift: () => currentShift,
+        otherActiveShifts: otherShifts,
+        maxActiveShifts: maxActiveShifts,
+        isLoading: false,
+        errorMessage: () => null,
+      );
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
@@ -96,7 +144,7 @@ class ShiftNotifier extends Notifier<ShiftState> {
     }
   }
 
-  /// Buka shift baru untuk kasir yang sedang login
+  /// Buka shift baru untuk kasir yang sedang login (dengan validasi limit StoreSettings)
   Future<String?> openShift({required double openingCash}) async {
     final auth = ref.read(authProvider);
     if (!auth.isAuthenticated || auth.dbUserId.isEmpty) {
@@ -107,36 +155,49 @@ class ShiftNotifier extends Notifier<ShiftState> {
 
     try {
       final supaClient = Supabase.instance.client;
-
-      // Cek apakah toko memiliki batasan shift aktif
       final storeId = auth.storeId;
-      if (storeId.isNotEmpty) {
-        final activeStoreShifts = await supaClient
-            .from('Shift')
-            .select('id')
-            .eq('storeId', storeId)
-            .eq('status', 'OPEN');
 
-        final storeSettings = await supaClient
+      // 1. Cek apakah user yang login ini masih memiliki shift OPEN
+      if (state.hasActiveShift) {
+        state = state.copyWith(isLoading: false);
+        return 'Anda masih memiliki shift yang sedang aktif. Silakan tutup terlebih dahulu.';
+      }
+
+      // 2. Cek limit toko dari StoreSettings
+      if (storeId.isNotEmpty) {
+        final storeSettingsResp = await supaClient
             .from('StoreSettings')
             .select('maxActiveShifts')
             .eq('storeId', storeId)
             .maybeSingle();
 
-        final maxActiveShifts = (storeSettings?['maxActiveShifts'] as num?)?.toInt() ?? 1;
+        final maxActiveShifts = (storeSettingsResp?['maxActiveShifts'] as num?)?.toInt() ?? 1;
+
+        final activeStoreShifts = await supaClient
+            .from('Shift')
+            .select('id, userId, User:User(name, username)')
+            .eq('storeId', storeId)
+            .eq('status', 'OPEN');
 
         if (activeStoreShifts.length >= maxActiveShifts) {
           state = state.copyWith(isLoading: false);
-          return 'Batas shift aktif toko ($maxActiveShifts shift) telah tercapai. Tutup shift kasir lain terlebih dahulu.';
+          final otherUser = activeStoreShifts.first['User'];
+          final otherName = otherUser != null
+              ? (otherUser['name']?.toString() ?? otherUser['username']?.toString() ?? 'Kasir Lain')
+              : 'Kasir Lain';
+
+          return 'Batas shift aktif toko ($maxActiveShifts shift) telah tercapai. Shift sedang berjalan oleh $otherName. Tutup shift tersebut terlebih dahulu atau ubah batas shift di pengaturan toko.';
         }
       }
 
+      final nowUtc = DateTime.now().toUtc().toIso8601String();
       final insertData = {
         'storeId': storeId.isNotEmpty ? storeId : null,
         'userId': auth.dbUserId,
         'status': 'OPEN',
         'openingCash': openingCash,
-        'openedAt': DateTime.now().toIso8601String(),
+        'openedAt': nowUtc,
+        'updatedAt': nowUtc,
       };
 
       final response = await supaClient
@@ -151,6 +212,9 @@ class ShiftNotifier extends Notifier<ShiftState> {
         isLoading: false,
         errorMessage: () => null,
       );
+
+      // Refresh seluruh data shift toko
+      await checkActiveShift();
       return null;
     } catch (e) {
       final err = 'Gagal membuka shift: ${e.toString()}';
@@ -173,15 +237,17 @@ class ShiftNotifier extends Notifier<ShiftState> {
 
     try {
       final supaClient = Supabase.instance.client;
+      final nowUtc = DateTime.now().toUtc().toIso8601String();
       final diff = actualCash - current.openingCash;
 
       await supaClient
           .from('Shift')
           .update({
             'status': 'CLOSED',
-            'closedAt': DateTime.now().toIso8601String(),
+            'closedAt': nowUtc,
+            'updatedAt': nowUtc,
             'actualCash': actualCash,
-            'expectedCash': current.openingCash, // Akan disempurnakan di tahap POS cash
+            'expectedCash': current.openingCash,
             'difference': diff,
             'depositedCash': depositedCash,
           })
@@ -192,6 +258,9 @@ class ShiftNotifier extends Notifier<ShiftState> {
         isLoading: false,
         errorMessage: () => null,
       );
+
+      // Refresh status shift toko
+      await checkActiveShift();
       return null;
     } catch (e) {
       final err = 'Gagal menutup shift: ${e.toString()}';

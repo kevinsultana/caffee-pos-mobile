@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../core/constants/app_colors.dart';
+import '../../core/utils/app_toast.dart';
 import '../../providers/auth_provider.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -12,13 +14,13 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController(text: 'owner@schawcafe.com');
-  final _passwordController = TextEditingController(text: 'owner123');
+  final _usernameController = TextEditingController(text: '');
+  final _passwordController = TextEditingController(text: '');
   bool _obscurePassword = true;
 
   @override
   void dispose() {
-    _emailController.dispose();
+    _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
@@ -30,25 +32,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     FocusScope.of(context).unfocus();
 
     final authNotifier = ref.read(authProvider.notifier);
-    final error = await authNotifier.signInWithEmailPassword(
-      _emailController.text,
+    final error = await authNotifier.signInWithUsernameOrEmail(
+      _usernameController.text,
       _passwordController.text,
     );
 
     if (error != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.error_outline_rounded, color: Colors.white, size: 20),
-              const SizedBox(width: 10),
-              Expanded(child: Text(error)),
-            ],
-          ),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 4),
-        ),
+      AppToast.showError(
+        context,
+        error,
+        duration: const Duration(seconds: 4),
       );
     }
   }
@@ -64,20 +57,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     // Listener untuk menangani error notifikasi dari auth state (misal: user INACTIVE / RESIGNED)
     ref.listen<AuthState>(authProvider, (previous, next) {
-      if (next.errorMessage != null && next.errorMessage != previous?.errorMessage) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.error_outline_rounded, color: Colors.white, size: 20),
-                const SizedBox(width: 10),
-                Expanded(child: Text(next.errorMessage!)),
-              ],
-            ),
-            backgroundColor: AppColors.error,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+      if (next.errorMessage != null &&
+          next.errorMessage != previous?.errorMessage) {
+        AppToast.showError(context, next.errorMessage!);
       }
     });
 
@@ -143,9 +125,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                         const SizedBox(height: 28),
 
-                        // Email / Username Input
+                        // Username / Email Input
                         const Text(
-                          'Email Kasir',
+                          'Username atau Email Kasir',
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
@@ -155,17 +137,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                         const SizedBox(height: 8),
                         TextFormField(
-                          controller: _emailController,
-                          keyboardType: TextInputType.emailAddress,
+                          controller: _usernameController,
+                          keyboardType: TextInputType.text,
                           textInputAction: TextInputAction.next,
                           enabled: !authState.isLoading,
                           decoration: const InputDecoration(
-                            hintText: 'nama@schawcafe.com',
-                            prefixIcon: Icon(Icons.alternate_email_rounded, size: 20),
+                            hintText: 'Contoh: owner atau kasir1',
+                            prefixIcon: Icon(
+                              Icons.person_outline_rounded,
+                              size: 20,
+                            ),
                           ),
                           validator: (val) {
                             if (val == null || val.trim().isEmpty) {
-                              return 'Email kasir wajib diisi';
+                              return 'Username atau email wajib diisi';
                             }
                             return null;
                           },
@@ -191,7 +176,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           onFieldSubmitted: (_) => _handleLogin(),
                           decoration: InputDecoration(
                             hintText: '••••••••',
-                            prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
+                            prefixIcon: const Icon(
+                              Icons.lock_outline_rounded,
+                              size: 20,
+                            ),
                             suffixIcon: IconButton(
                               icon: Icon(
                                 _obscurePassword
@@ -224,7 +212,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   width: 20,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
                                   ),
                                 )
                               : const Text('Masuk ke Kasir'),
@@ -233,8 +223,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                         // Instant Demo Sign-in Button (untuk uji coba instan dengan sinkronisasi database)
                         OutlinedButton.icon(
-                          onPressed: authState.isLoading ? null : _handleDemoLogin,
-                          icon: const Icon(Icons.flash_on_rounded, size: 18, color: AppColors.amber),
+                          onPressed: authState.isLoading
+                              ? null
+                              : _handleDemoLogin,
+                          icon: const Icon(
+                            Icons.flash_on_rounded,
+                            size: 18,
+                            color: AppColors.amber,
+                          ),
                           label: const Text(
                             'Masuk Mode Demo (Sinkron DB)',
                             style: TextStyle(

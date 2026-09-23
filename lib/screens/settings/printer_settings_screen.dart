@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/app_colors.dart';
+import '../../core/utils/app_toast.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/printer_provider.dart';
 
@@ -126,18 +127,17 @@ class PrinterSettingsScreen extends ConsumerWidget {
                                     : 'SCHAW CAFE',
                               );
                           if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  success
-                                      ? 'Uji cetak berhasil dikirim ke printer!'
-                                      : 'Gagal mencetak. Periksa kertas & bluetooth printer.',
-                                ),
-                                backgroundColor:
-                                    success ? AppColors.success : AppColors.error,
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
+                            if (success) {
+                              AppToast.showSuccess(
+                                context,
+                                'Uji cetak berhasil dikirim ke printer!',
+                              );
+                            } else {
+                              AppToast.showError(
+                                context,
+                                'Gagal mencetak. Periksa kertas & bluetooth printer.',
+                              );
+                            }
                           }
                         },
                   icon: printerState.isPrinting
@@ -269,6 +269,7 @@ class PrinterSettingsScreen extends ConsumerWidget {
                           style: OutlinedButton.styleFrom(
                             foregroundColor: AppColors.error,
                             side: const BorderSide(color: AppColors.error),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10),
                             ),
@@ -281,6 +282,7 @@ class PrinterSettingsScreen extends ConsumerWidget {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.primary,
                             foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10),
                             ),
@@ -290,21 +292,23 @@ class PrinterSettingsScreen extends ConsumerWidget {
                                 .read(printerProvider.notifier)
                                 .connectDevice(device);
                             if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    ok
-                                        ? 'Berhasil tersambung ke ${device.name}'
-                                        : 'Gagal tersambung ke ${device.name}',
-                                  ),
-                                  backgroundColor:
-                                      ok ? AppColors.success : AppColors.error,
-                                  behavior: SnackBarBehavior.floating,
-                                ),
-                              );
+                              if (ok) {
+                                AppToast.showSuccess(
+                                  context,
+                                  'Berhasil tersambung ke ${device.name}',
+                                );
+                              } else {
+                                AppToast.showError(
+                                  context,
+                                  'Gagal tersambung ke ${device.name}',
+                                );
+                              }
                             }
                           },
-                          child: const Text('Sambungkan'),
+                          child: const FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text('Sambungkan'),
+                          ),
                         ),
                 ),
               );

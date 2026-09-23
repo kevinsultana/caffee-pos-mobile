@@ -6,6 +6,7 @@ import 'package:gal/gal.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../core/constants/app_colors.dart';
+import '../../core/utils/app_toast.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/printer_provider.dart';
 
@@ -74,21 +75,10 @@ class _QrTableScreenState extends ConsumerState<QrTableScreen> {
       if (!mounted) return;
       setState(() => _isSaving = false);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text('QR Code $_currentTable berhasil disimpan ke Galeri!'),
-              ),
-            ],
-          ),
-          backgroundColor: AppColors.success,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 3),
-        ),
+      AppToast.showSuccess(
+        context,
+        'QR Code $_currentTable berhasil disimpan ke Galeri!',
+        duration: const Duration(seconds: 3),
       );
     } on GalException catch (e) {
       if (!mounted) return;
@@ -101,36 +91,18 @@ class _QrTableScreenState extends ConsumerState<QrTableScreen> {
         errorMessage = 'Ruang penyimpanan perangkat tidak mencukupi.';
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.error_outline_rounded, color: Colors.white, size: 20),
-              const SizedBox(width: 10),
-              Expanded(child: Text(errorMessage)),
-            ],
-          ),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 4),
-        ),
+      AppToast.showError(
+        context,
+        errorMessage,
+        duration: const Duration(seconds: 4),
       );
     } catch (e) {
       if (!mounted) return;
       setState(() => _isSaving = false);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.error_outline_rounded, color: Colors.white, size: 20),
-              const SizedBox(width: 10),
-              Expanded(child: Text('Terjadi kesalahan: ${e.toString()}')),
-            ],
-          ),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showError(
+        context,
+        'Terjadi kesalahan: ${e.toString()}',
       );
     }
   }
@@ -413,26 +385,18 @@ class _QrTableScreenState extends ConsumerState<QrTableScreen> {
                   ),
                   onPressed: () {
                     if (!printerState.isConnected) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Printer thermal belum terhubung. Buka Pengaturan Printer untuk menyambungkan.',
-                          ),
-                          backgroundColor: AppColors.amber,
-                          behavior: SnackBarBehavior.floating,
-                        ),
+                      AppToast.showWarning(
+                        context,
+                        'Printer thermal belum terhubung. Buka Pengaturan Printer untuk menyambungkan.',
                       );
                       return;
                     }
 
                     // Tampilkan konfirmasi kirim ke printer
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Mengirim data Tent Card $_currentTable ke printer thermal...'),
-                        backgroundColor: AppColors.primary,
-                        behavior: SnackBarBehavior.floating,
-                        duration: const Duration(seconds: 2),
-                      ),
+                    AppToast.showInfo(
+                      context,
+                      'Mengirim data Tent Card $_currentTable ke printer thermal...',
+                      duration: const Duration(seconds: 2),
                     );
                   },
                   icon: const Icon(Icons.print_rounded, size: 18, color: AppColors.textSecondary),

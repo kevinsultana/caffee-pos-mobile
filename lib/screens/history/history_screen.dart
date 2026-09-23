@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants/app_colors.dart';
+import '../../core/utils/app_toast.dart';
 import '../../models/order_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/printer_provider.dart';
@@ -292,12 +293,9 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                           final printerState = ref.read(printerProvider);
 
                           if (!printerState.isConnected) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Printer belum terhubung. Buka Pengaturan Printer untuk menyambungkan.'),
-                                backgroundColor: AppColors.amber,
-                                behavior: SnackBarBehavior.floating,
-                              ),
+                            AppToast.showWarning(
+                              context,
+                              'Printer belum terhubung. Buka Pengaturan Printer untuk menyambungkan.',
                             );
                             return;
                           }
@@ -309,17 +307,17 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                               );
 
                           if (!mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                success
-                                    ? 'Struk transaksi berhasil dicetak ulang!'
-                                    : 'Gagal mencetak struk. Periksa status printer.',
-                              ),
-                              backgroundColor: success ? AppColors.success : AppColors.error,
-                              behavior: SnackBarBehavior.floating,
-                            ),
-                          );
+                          if (success) {
+                            AppToast.showSuccess(
+                              context,
+                              'Struk transaksi berhasil dicetak ulang!',
+                            );
+                          } else {
+                            AppToast.showError(
+                              context,
+                              'Gagal mencetak struk. Periksa status printer.',
+                            );
+                          }
                         },
                         icon: const Icon(Icons.print_rounded, size: 20),
                         label: const Text(

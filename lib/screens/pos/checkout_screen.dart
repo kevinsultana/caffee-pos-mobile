@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants/app_colors.dart';
+import '../../core/utils/app_toast.dart';
 import '../../models/cart_item_model.dart';
 import '../../models/order_model.dart';
 import '../../providers/auth_provider.dart';
@@ -65,34 +66,22 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final shift = ref.read(shiftProvider);
 
     if (cart.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Keranjang belanja kosong.'),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      AppToast.showError(context, 'Keranjang belanja kosong.');
       return;
     }
 
     if (!shift.hasActiveShift || shift.activeShift == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Shift kasir belum dibuka! Silakan buka shift di tab Kelola Shift.'),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showError(
+        context,
+        'Shift kasir belum dibuka! Silakan buka shift di tab Kelola Shift.',
       );
       return;
     }
 
     if (_paymentMethod == 'CASH' && _cashReceived < cart.totalPrice) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Uang tunai yang diterima kurang dari total pembayaran.'),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showError(
+        context,
+        'Uang tunai yang diterima kurang dari total pembayaran.',
       );
       return;
     }
@@ -114,13 +103,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     setState(() => _isProcessing = false);
 
     if (result.error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result.error!),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      AppToast.showError(context, result.error!);
       return;
     }
 
@@ -255,11 +238,15 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             ],
           ),
         ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         actions: [
           Row(
             children: [
               Expanded(
                 child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                  ),
                   onPressed: () {
                     final auth = ref.read(authProvider);
                     ref.read(printerProvider.notifier).printReceipt(
@@ -267,26 +254,33 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                           storeName: auth.storeName.isNotEmpty ? auth.storeName : 'SCHAW CAFE',
                           cashierName: auth.userName,
                         );
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Perintah cetak struk dikirim ke printer'),
-                        behavior: SnackBarBehavior.floating,
-                        duration: Duration(seconds: 1),
-                      ),
+                    AppToast.showInfo(
+                      context,
+                      'Perintah cetak struk dikirim ke printer',
+                      duration: const Duration(seconds: 1),
                     );
                   },
                   icon: const Icon(Icons.print_rounded, size: 18),
-                  label: const Text('Cetak Struk'),
+                  label: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text('Cetak Struk'),
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                  ),
                   onPressed: () {
                     Navigator.pop(ctx); // Tutup dialog
                     Navigator.pop(context); // Kembali dari checkout screen ke POS
                   },
-                  child: const Text('Selesai'),
+                  child: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text('Selesai'),
+                  ),
                 ),
               ),
             ],

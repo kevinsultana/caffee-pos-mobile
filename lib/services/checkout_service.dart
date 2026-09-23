@@ -91,6 +91,7 @@ class CheckoutService {
 
     try {
       final now = DateTime.now();
+      final nowUtc = now.toUtc().toIso8601String();
       final orderNumber = generateOrderNumber();
       final queueNumber = await generateQueueNumber(
         client: client,
@@ -126,7 +127,8 @@ class CheckoutService {
         'grandTotal': totalAmount,
         'roundingAmount': 0,
         'cashPayable': totalAmount,
-        'paidAt': now.toIso8601String(),
+        'paidAt': nowUtc,
+        'updatedAt': nowUtc,
       };
 
       final orderRes = await client.from('Order').insert(orderInsertData).select().single();
@@ -164,7 +166,8 @@ class CheckoutService {
         'amount': totalAmount,
         'cashReceived': paymentMethod == 'CASH' ? cashReceived : null,
         'changeAmount': changeAmount,
-        'paidAt': now.toIso8601String(),
+        'paidAt': nowUtc,
+        'updatedAt': nowUtc,
       };
 
       final paymentRes = await client.from('Payment').insert(paymentInsertData).select().single();

@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 
+import '../core/utils/date_parser.dart';
+
 @immutable
 class OrderItemModel {
   final String id;
@@ -171,11 +173,21 @@ class OrderModel {
         decimalDigits: 0,
       ).format(grandTotal);
 
-  String get formattedDate =>
-      DateFormat('dd MMM yyyy, HH:mm', 'id_ID').format(createdAt.toLocal());
+  String get formattedDate {
+    try {
+      return DateFormat('dd MMM yyyy, HH:mm', 'id_ID').format(createdAt);
+    } catch (_) {
+      return DateFormat('dd MMM yyyy, HH:mm').format(createdAt);
+    }
+  }
 
-  String get formattedTime =>
-      DateFormat('HH:mm', 'id_ID').format(createdAt.toLocal());
+  String get formattedTime {
+    try {
+      return DateFormat('HH:mm', 'id_ID').format(createdAt);
+    } catch (_) {
+      return DateFormat('HH:mm').format(createdAt);
+    }
+  }
 
   bool get isDineIn => queueNumber?.startsWith('A') ?? false;
   String get diningLabel => isDineIn ? 'Dine-in' : 'Takeaway';
@@ -233,12 +245,8 @@ class OrderModel {
       cashPayable: (map['cashPayable'] is num)
           ? (map['cashPayable'] as num).toDouble()
           : double.tryParse(map['cashPayable']?.toString() ?? '0') ?? 0.0,
-      paidAt: map['paidAt'] != null
-          ? DateTime.tryParse(map['paidAt'].toString())
-          : null,
-      createdAt: map['createdAt'] != null
-          ? DateTime.tryParse(map['createdAt'].toString()) ?? DateTime.now()
-          : DateTime.now(),
+      paidAt: tryParseDateTime(map['paidAt']),
+      createdAt: parseDateTime(map['createdAt']),
       items: itemsList,
       payment: paymentObj,
       cashierName: cashierName,

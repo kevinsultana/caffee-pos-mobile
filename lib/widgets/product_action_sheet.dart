@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../core/constants/app_colors.dart';
+import '../core/utils/app_toast.dart';
 import '../models/product_model.dart';
 import '../providers/cart_provider.dart';
 
@@ -82,23 +83,10 @@ class _ProductActionSheetState extends ConsumerState<ProductActionSheet> {
 
     Navigator.pop(context);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                '${widget.product.name}${_selectedVariant != null ? " (${_selectedVariant!.name})" : ""} berhasil ditambahkan!',
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: AppColors.primary,
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-      ),
+    AppToast.showSuccess(
+      context,
+      '${widget.product.name}${_selectedVariant != null ? " (${_selectedVariant!.name})" : ""} berhasil ditambahkan!',
+      duration: const Duration(seconds: 2),
     );
   }
 
@@ -133,18 +121,31 @@ class _ProductActionSheetState extends ConsumerState<ProductActionSheet> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 60,
-                    height: 60,
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryContainer,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.primaryLight),
-                    ),
-                    child: const Icon(
-                      Icons.coffee_rounded,
-                      size: 32,
-                      color: AppColors.primary,
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryContainer,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppColors.primaryLight),
+                      ),
+                      child: (widget.product.imageUrl != null && widget.product.imageUrl!.trim().isNotEmpty)
+                          ? Image.network(
+                              widget.product.imageUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) => const Icon(
+                                Icons.coffee_rounded,
+                                size: 32,
+                                color: AppColors.primary,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.coffee_rounded,
+                              size: 32,
+                              color: AppColors.primary,
+                            ),
                     ),
                   ),
                   const SizedBox(width: 14),
@@ -309,14 +310,23 @@ class _ProductActionSheetState extends ConsumerState<ProductActionSheet> {
                     child: SizedBox(
                       height: 50,
                       child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                        ),
                         onPressed: _handleAddToCart,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.add_shopping_cart_rounded, size: 18),
-                            const SizedBox(width: 8),
-                            Text('Tambah • ${_formatCurrency(_totalPrice)}'),
-                          ],
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.add_shopping_cart_rounded, size: 18),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Tambah • ${_formatCurrency(_totalPrice)}',
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),

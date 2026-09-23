@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 
+import '../core/utils/date_parser.dart';
+
 @immutable
 class ShiftModel {
   final String id;
@@ -44,7 +46,11 @@ class ShiftModel {
   }
 
   String get formattedOpenedAt {
-    return DateFormat('dd MMM yyyy, HH:mm', 'id_ID').format(openedAt.toLocal());
+    try {
+      return DateFormat('dd MMM yyyy, HH:mm', 'id_ID').format(openedAt);
+    } catch (_) {
+      return DateFormat('dd MMM yyyy, HH:mm').format(openedAt);
+    }
   }
 
   factory ShiftModel.fromMap(Map<String, dynamic> map) {
@@ -79,12 +85,8 @@ class ShiftModel {
           ? ((map['depositedCash'] as num?)?.toDouble() ??
               double.tryParse(map['depositedCash'].toString()))
           : null,
-      openedAt: map['openedAt'] != null
-          ? DateTime.tryParse(map['openedAt'].toString()) ?? DateTime.now()
-          : DateTime.now(),
-      closedAt: map['closedAt'] != null
-          ? DateTime.tryParse(map['closedAt'].toString())
-          : null,
+      openedAt: parseDateTime(map['openedAt']),
+      closedAt: tryParseDateTime(map['closedAt']),
       userName: userName,
     );
   }
@@ -103,5 +105,53 @@ class ShiftModel {
       'openedAt': openedAt.toIso8601String(),
       'closedAt': closedAt?.toIso8601String(),
     };
+  }
+}
+
+@immutable
+class ActiveStoreShiftInfo {
+  final String id;
+  final String userId;
+  final String userName;
+  final String username;
+  final double openingCash;
+  final DateTime openedAt;
+
+  const ActiveStoreShiftInfo({
+    required this.id,
+    required this.userId,
+    required this.userName,
+    required this.username,
+    required this.openingCash,
+    required this.openedAt,
+  });
+
+  String get formattedOpenedAt {
+    try {
+      return DateFormat('dd MMM yyyy, HH:mm', 'id_ID').format(openedAt);
+    } catch (_) {
+      return DateFormat('dd MMM yyyy, HH:mm').format(openedAt);
+    }
+  }
+
+  factory ActiveStoreShiftInfo.fromMap(Map<String, dynamic> map) {
+    String userName = 'Kasir';
+    String username = 'kasir';
+    final userData = map['User'] ?? map['user'];
+    if (userData is Map<String, dynamic>) {
+      userName = userData['name']?.toString() ?? 'Kasir';
+      username = userData['username']?.toString() ?? 'kasir';
+    }
+
+    return ActiveStoreShiftInfo(
+      id: map['id']?.toString() ?? '',
+      userId: map['userId']?.toString() ?? '',
+      userName: userName,
+      username: username,
+      openingCash: (map['openingCash'] is num)
+          ? (map['openingCash'] as num).toDouble()
+          : double.tryParse(map['openingCash']?.toString() ?? '0') ?? 0.0,
+      openedAt: parseDateTime(map['openedAt']),
+    );
   }
 }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/constants/app_colors.dart';
+import '../../core/utils/app_toast.dart';
 import '../../models/cart_item_model.dart';
 import '../../providers/cart_provider.dart';
 
@@ -223,29 +224,40 @@ class CartSheet extends ConsumerWidget {
                         ),
                         onDismissed: (_) {
                           ref.read(cartProvider.notifier).removeItem(item.id);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('${item.productName} dihapus dari keranjang'),
-                              behavior: SnackBarBehavior.floating,
-                              duration: const Duration(seconds: 1),
-                            ),
+                          AppToast.showInfo(
+                            context,
+                            '${item.productName} dihapus dari keranjang',
+                            duration: const Duration(seconds: 1),
                           );
                         },
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Thumbnail / Icon
-                            Container(
-                              width: 48,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                color: AppColors.primaryContainer,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Icon(
-                                Icons.coffee_rounded,
-                                color: AppColors.primary,
-                                size: 24,
+                            // Thumbnail / Gambar Produk
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  color: AppColors.primaryContainer,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: (item.productImageUrl != null && item.productImageUrl!.trim().isNotEmpty)
+                                    ? Image.network(
+                                        item.productImageUrl!,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stackTrace) => const Icon(
+                                          Icons.coffee_rounded,
+                                          color: AppColors.primary,
+                                          size: 24,
+                                        ),
+                                      )
+                                    : const Icon(
+                                        Icons.coffee_rounded,
+                                        color: AppColors.primary,
+                                        size: 24,
+                                      ),
                               ),
                             ),
                             const SizedBox(width: 12),

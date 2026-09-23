@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'package:bcrypt/bcrypt.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as supa;
 import '../models/user_profile.dart';
 
@@ -38,165 +40,143 @@ class AuthState {
 }
 
 class AuthNotifier extends Notifier<AuthState> {
-  StreamSubscription<supa.AuthState>? _authSubscription;
+  static const String _savedUserKey = 'schaw_saved_user_id';
 
   @override
   AuthState build() {
-    ref.onDispose(() {
-      _authSubscription?.cancel();
-    });
-
-    _initSupabaseAuthListener();
+    _loadSavedSession();
     return const AuthState(isLoading: true);
   }
 
-  void _initSupabaseAuthListener() {
+  /// Memuat sesi user tersimpan dari penyimpanan lokal (Auto-login)
+  Future<void> _loadSavedSession() async {
     try {
-      final supaClient = supa.Supabase.instance.client;
+      final prefs = await SharedPreferences.getInstance();
+      final savedUserId = prefs.getString(_savedUserKey);
 
-      // Cek sesi yang sudah tersimpan di lokal (auto-login)
-      final session = supaClient.auth.currentSession;
-      if (session != null && session.user.email != null) {
-        _syncUserProfile(session.user.email!, authUserId: session.user.id);
-      } else {
-        state = const AuthState(isLoading: false);
-      }
-
-      // Dengarkan perubahan sesi autentikasi Supabase
-      _authSubscription = supaClient.auth.onAuthStateChange.listen((data) {
-        final currentSession = data.session;
-        if (currentSession != null && currentSession.user.email != null) {
-          _syncUserProfile(currentSession.user.email!, authUserId: currentSession.user.id);
-        } else {
-          state = const AuthState(isLoading: false);
-        }
-      });
-    } catch (e) {
-      state = const AuthState(isLoading: false);
-    }
-  }
-
-  /// Sinkronisasi email auth Supabase dengan tabel public."User" di database utama
-  Future<void> _syncUserProfile(String email, {String? authUserId}) async {
-    try {
-      final supaClient = supa.Supabase.instance.client;
-      final cleanEmail = email.trim().toLowerCase();
-
-      // 1. Cari berdasarkan email
-      var response = await supaClient
-          .from('User')
-          .select('id, storeId, roleId, username, email, name, status, Role(name), Store(id, name, code)')
-          .eq('email', cleanEmail)
-          .maybeSingle();
-
-      // 2. Jika tidak ditemukan via email, coba cari via username
-      if (response == null) {
-        final usernamePrefix = cleanEmail.split('@').first;
-        response = await supaClient
+      if (savedUserId != null && savedUserId.isNotEmpty) {
+        final supaClient = supa.Supabase.instance.client;
+        final userRecord = await supaClient
             .from('User')
             .select('id, storeId, roleId, username, email, name, status, Role(name), Store(id, name, code)')
-            .eq('username', usernamePrefix)
+            .eq('id', savedUserId)
             .maybeSingle();
-      }
 
-      if (response != null) {
-        final status = response['status']?.toString() ?? 'ACTIVE';
-
-        // Validasi status user: Cegah user INACTIVE atau RESIGNED
-        if (status == 'RESIGNED') {
-          await supaClient.auth.signOut();
-          state = state.copyWith(
-            profile: () => null,
-            isLoading: false,
-            errorMessage: () => 'Akun kasir telah RESIGNED dan tidak dapat mengakses sistem.',
-          );
-          return;
+        if (userRecord != null) {
+          final status = userRecord['status']?.toString() ?? 'ACTIVE';
+          if (status == 'ACTIVE') {
+            final profile = UserProfile.fromMap(userRecord, authUserId: userRecord['id']);
+            state = state.copyWith(
+              profile: () => profile,
+              isLoading: false,
+              errorMessage: () => null,
+            );
+            return;
+          }
         }
-
-        if (status == 'INACTIVE') {
-          await supaClient.auth.signOut();
-          state = state.copyWith(
-            profile: () => null,
-            isLoading: false,
-            errorMessage: () => 'Akun kasir sedang DINONAKTIFKAN. Silakan hubungi Owner.',
-          );
-          return;
-        }
-
-        final profile = UserProfile.fromMap(response, authUserId: authUserId);
-        state = state.copyWith(
-          profile: () => profile,
-          isLoading: false,
-          errorMessage: () => null,
-        );
-      } else {
-        // User terotentikasi di Supabase Auth tapi belum terdaftar di tabel User toko
-        final fallbackProfile = UserProfile(
-          dbUserId: authUserId ?? 'unknown-user',
-          authUserId: authUserId,
-          storeId: '',
-          username: cleanEmail.split('@').first,
-          email: cleanEmail,
-          name: cleanEmail.split('@').first,
-          status: 'ACTIVE',
-          roleName: 'CASHIER',
-        );
-        state = state.copyWith(
-          profile: () => fallbackProfile,
-          isLoading: false,
-          errorMessage: () => null,
-        );
+        // Jika user sudah tidak aktif, hapus dari local storage
+        await prefs.remove(_savedUserKey);
       }
     } catch (e) {
-      // Jika terjadi kendala jaringan/koneksi
-      state = state.copyWith(
-        isLoading: false,
-        errorMessage: () => 'Gagal menyinkronkan profil kasir: ${e.toString()}',
-      );
+      debugPrint('Error loading saved session: $e');
     }
+    state = const AuthState(isLoading: false);
   }
 
-  /// Login resmi kasir via Supabase Auth
-  Future<String?> signInWithEmailPassword(String email, String password) async {
-    final cleanEmail = email.trim();
+  /// Login resmi kasir (Sesuai dengan database web app menggunakan Username/Email & BCrypt)
+  Future<String?> signInWithUsernameOrEmail(String usernameOrEmail, String password) async {
+    final cleanInput = usernameOrEmail.trim().toLowerCase();
     final cleanPassword = password.trim();
 
-    if (cleanEmail.isEmpty || cleanPassword.isEmpty) {
-      return 'Email dan kata sandi wajib diisi.';
+    if (cleanInput.isEmpty || cleanPassword.isEmpty) {
+      return 'Username dan kata sandi wajib diisi.';
     }
 
     state = state.copyWith(isLoading: true, errorMessage: () => null);
 
     try {
-      final res = await supa.Supabase.instance.client.auth.signInWithPassword(
-        email: cleanEmail,
-        password: cleanPassword,
+      final supaClient = supa.Supabase.instance.client;
+
+      // 1. Cari data user di tabel public."User" berdasarkan username atau email
+      final query = cleanInput.contains('@')
+          ? supaClient
+              .from('User')
+              .select('id, storeId, roleId, username, email, name, status, passwordHash, Role(name), Store(id, name, code)')
+              .ilike('email', cleanInput)
+          : supaClient
+              .from('User')
+              .select('id, storeId, roleId, username, email, name, status, passwordHash, Role(name), Store(id, name, code)')
+              .ilike('username', cleanInput);
+
+      final userRecord = await query.maybeSingle();
+
+      if (userRecord == null) {
+        state = state.copyWith(isLoading: false);
+        return 'Username atau kata sandi salah.';
+      }
+
+      // 2. Validasi status akun (RESIGNED / INACTIVE)
+      final status = userRecord['status']?.toString() ?? 'ACTIVE';
+      if (status == 'RESIGNED') {
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage: () => 'Akun kasir telah RESIGNED dan tidak dapat mengakses sistem.',
+        );
+        return 'Akun kasir telah RESIGNED dan tidak dapat mengakses sistem.';
+      }
+
+      if (status == 'INACTIVE') {
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage: () => 'Akun kasir sedang DINONAKTIFKAN. Silakan hubungi Owner.',
+        );
+        return 'Akun kasir sedang DINONAKTIFKAN. Silakan hubungi Owner.';
+      }
+
+      // 3. Verifikasi Kata Sandi dengan BCrypt (sesuai passwordHash dari web app)
+      final passwordHash = userRecord['passwordHash']?.toString() ?? '';
+      if (passwordHash.isEmpty) {
+        state = state.copyWith(isLoading: false);
+        return 'Akun belum memiliki kata sandi yang valid.';
+      }
+
+      bool isPasswordValid = false;
+      try {
+        isPasswordValid = BCrypt.checkpw(cleanPassword, passwordHash);
+      } catch (e) {
+        debugPrint('BCrypt error: $e');
+      }
+
+      if (!isPasswordValid) {
+        state = state.copyWith(isLoading: false);
+        return 'Username atau kata sandi salah.';
+      }
+
+      // 4. Simpan ID sesi ke local storage
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_savedUserKey, userRecord['id'].toString());
+      } catch (_) {}
+
+      // 5. Update state dengan UserProfile
+      final profile = UserProfile.fromMap(userRecord, authUserId: userRecord['id']);
+      state = state.copyWith(
+        profile: () => profile,
+        isLoading: false,
+        errorMessage: () => null,
       );
 
-      if (res.user != null) {
-        await _syncUserProfile(res.user!.email ?? cleanEmail, authUserId: res.user!.id);
-        if (state.errorMessage != null) {
-          return state.errorMessage;
-        }
-        return null;
-      }
-      state = state.copyWith(isLoading: false);
-      return 'Gagal melakukan otentikasi. Silakan periksa kredensial Anda.';
-    } on supa.AuthException catch (e) {
-      String userMessage = e.message;
-      if (e.message.toLowerCase().contains('invalid login credentials')) {
-        userMessage = 'Email atau kata sandi kasir salah.';
-      } else if (e.message.toLowerCase().contains('email not confirmed')) {
-        userMessage = 'Email kasir belum dikonfirmasi di Supabase.';
-      }
-      state = state.copyWith(isLoading: false, errorMessage: () => userMessage);
-      return userMessage;
+      return null;
     } catch (e) {
-      final err = 'Terjadi kesalahan: ${e.toString()}';
+      final err = 'Terjadi kesalahan saat masuk: ${e.toString()}';
       state = state.copyWith(isLoading: false, errorMessage: () => err);
       return err;
     }
   }
+
+  /// Alias untuk kompatibilitas ke belakang
+  Future<String?> signInWithEmailPassword(String usernameOrEmail, String password) =>
+      signInWithUsernameOrEmail(usernameOrEmail, password);
 
   /// Login instan mode Demo (mengambil akun kasir aktif pertama dari database jika tersedia)
   Future<void> loginDemo([String username = 'owner']) async {
@@ -212,7 +192,12 @@ class AuthNotifier extends Notifier<AuthState> {
           .maybeSingle();
 
       if (response != null) {
-        final profile = UserProfile.fromMap(response, authUserId: 'demo-auth-id');
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(_savedUserKey, response['id'].toString());
+        } catch (_) {}
+
+        final profile = UserProfile.fromMap(response, authUserId: response['id']);
         state = state.copyWith(
           profile: () => profile,
           isLoading: false,
@@ -246,6 +231,11 @@ class AuthNotifier extends Notifier<AuthState> {
   /// Sign out dari sesi aktif
   Future<void> signOut() async {
     state = state.copyWith(isLoading: true);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_savedUserKey);
+    } catch (_) {}
 
     try {
       await supa.Supabase.instance.client.auth.signOut();

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/constants/app_colors.dart';
+import '../../core/utils/app_toast.dart';
 import '../../models/shift_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/shift_provider.dart';
@@ -132,20 +133,11 @@ class _ShiftScreenState extends ConsumerState<ShiftScreen> {
     if (!mounted) return;
 
     if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      AppToast.showError(context, error);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Shift berhasil dibuka! Selamat bertugas.'),
-          backgroundColor: AppColors.success,
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showSuccess(
+        context,
+        'Shift berhasil dibuka! Selamat bertugas.',
       );
     }
   }
@@ -239,20 +231,11 @@ class _ShiftScreenState extends ConsumerState<ShiftScreen> {
     if (!mounted) return;
 
     if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      AppToast.showError(context, error);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Shift berhasil ditutup. Terima kasih!'),
-          backgroundColor: AppColors.success,
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showSuccess(
+        context,
+        'Shift berhasil ditutup. Terima kasih!',
       );
     }
   }
@@ -278,7 +261,9 @@ class _ShiftScreenState extends ConsumerState<ShiftScreen> {
                     constraints: const BoxConstraints(maxWidth: 520),
                     child: shiftState.hasActiveShift
                         ? _buildActiveShiftView(context, shiftState.activeShift!, authState)
-                        : _buildEmptyShiftView(context, authState),
+                        : shiftState.isBlockedByOtherShift
+                            ? _buildBlockedShiftView(context, shiftState, authState)
+                            : _buildEmptyShiftView(context, authState, shiftState),
                   ),
                 ),
               ),
@@ -286,8 +271,169 @@ class _ShiftScreenState extends ConsumerState<ShiftScreen> {
     );
   }
 
-  /// Kondisi 1: Belum Buka Shift
-  Widget _buildEmptyShiftView(BuildContext context, AuthState authState) {
+  /// Kondisi 1: Shift Diblokir (Kasir lain sedang aktif & limit toko terpenuhi)
+  Widget _buildBlockedShiftView(
+    BuildContext context,
+    ShiftState shiftState,
+    AuthState authState,
+  ) {
+    final activeOther = shiftState.otherActiveShifts.isNotEmpty
+        ? shiftState.otherActiveShifts.first
+        : null;
+
+    return Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+        side: const BorderSide(color: AppColors.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: AppColors.roseLight,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.rose.withValues(alpha: 0.3)),
+              ),
+              child: const Icon(
+                Icons.lock_clock_rounded,
+                size: 44,
+                color: AppColors.rose,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+              decoration: BoxDecoration(
+                color: AppColors.roseLight,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                'Batas Shift Toko Penuh (${shiftState.maxActiveShifts}/${shiftState.maxActiveShifts})',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.rose,
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Shift Sedang Berjalan Oleh Kasir Lain',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Halo ${authState.userName}, akun Anda belum dapat membuka sesi shift baru karena toko sedang memiliki shift aktif.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Info Kasir yang Sedang Aktif
+            if (activeOther != null)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceMuted,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Kasir Bertugas:', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            activeOther.userName,
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.end,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Dibuka Sejak:', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            activeOther.formattedOpenedAt,
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primaryDark),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.end,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+            const SizedBox(height: 16),
+            Text(
+              'Berdasarkan pengaturan toko (Store Settings), maksimal shift aktif bersamaan adalah ${shiftState.maxActiveShifts}. Hubungi kasir di atas untuk menutup shift-nya, atau hubungi Owner untuk menambah batas shift toko jika ingin kasir paralel.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 11,
+                color: AppColors.textMuted,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Tombol Refresh Status
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                onPressed: () => ref.read(shiftProvider.notifier).checkActiveShift(),
+                icon: const Icon(Icons.refresh_rounded, size: 20),
+                label: const Text('Cek Ulang Status Shift', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Kondisi 2: Belum Buka Shift (Tapi diizinkan buka shift baru)
+  Widget _buildEmptyShiftView(
+    BuildContext context,
+    AuthState authState,
+    ShiftState shiftState,
+  ) {
     return Card(
       elevation: 0,
       color: Colors.white,
@@ -315,22 +461,41 @@ class _ShiftScreenState extends ConsumerState<ShiftScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppColors.surfaceMuted,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Text(
-                'Belum Ada Shift Berjalan',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textSecondary,
+            if (shiftState.otherActiveShifts.isNotEmpty) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryContainer,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  'Multi-Shift Aktif (${shiftState.totalStoreOpenShifts}/${shiftState.maxActiveShifts} Slot)',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primaryDark,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 14),
+              const SizedBox(height: 10),
+            ] else ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceMuted,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  'Belum Ada Shift Berjalan',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+            ],
             const Text(
               'Anda Belum Membuka Shift',
               textAlign: TextAlign.center,
