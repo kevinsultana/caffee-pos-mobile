@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
@@ -1224,30 +1225,32 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     );
   }
 
-  /// Helper untuk merender gambar produk dengan loading & fallback yang rapi
+  /// Helper untuk merender gambar produk dengan caching disk dan fallback yang rapi
   Widget _buildProductImage(ProductModel product) {
     final url = product.imageUrl?.trim();
     if (url != null && url.isNotEmpty) {
-      return Image.network(
-        url,
+      return CachedNetworkImage(
+        imageUrl: url,
         fit: BoxFit.cover,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return Container(
-            color: const Color(0xFFF1F5F9),
-            child: const Center(
-              child: SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: AppColors.primary,
-                ),
+        // Tunjukkan spinner tipis saat gambar sedang diunduh
+        placeholder: (context, url) => Container(
+          color: const Color(0xFFF1F5F9),
+          child: const Center(
+            child: SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AppColors.primary,
               ),
             ),
-          );
-        },
-        errorBuilder: (context, error, stackTrace) => _buildFallbackImage(),
+          ),
+        ),
+        // Fallback ikon kopi jika URL gambar gagal dimuat
+        errorWidget: (context, url, error) => _buildFallbackImage(),
+        // Batasi ukuran memori: maksimal 100×100 px di memori cache
+        memCacheWidth: 200,
+        memCacheHeight: 200,
       );
     }
     return _buildFallbackImage();

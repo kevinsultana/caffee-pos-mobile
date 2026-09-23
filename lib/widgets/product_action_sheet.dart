@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
@@ -132,13 +133,19 @@ class _ProductActionSheetState extends ConsumerState<ProductActionSheet> {
                         border: Border.all(color: AppColors.primaryLight),
                       ),
                       child: (widget.product.imageUrl != null && widget.product.imageUrl!.trim().isNotEmpty)
-                          ? Image.network(
-                              widget.product.imageUrl!,
+                          ? CachedNetworkImage(
+                              imageUrl: widget.product.imageUrl!,
                               fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => const Icon(
-                                Icons.coffee_rounded,
-                                size: 32,
-                                color: AppColors.primary,
+                              memCacheWidth: 128,
+                              memCacheHeight: 128,
+                              placeholder: (context, url) => const Center(
+                                child: SizedBox(
+                                  width: 20, height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                                ),
+                              ),
+                              errorWidget: (context, url, error) => const Icon(
+                                Icons.coffee_rounded, size: 32, color: AppColors.primary,
                               ),
                             )
                           : const Icon(

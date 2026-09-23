@@ -67,22 +67,46 @@ class CheckoutService {
       return const CheckoutResult(error: 'Keranjang belanja masih kosong.');
     }
 
-    if (shiftId.isEmpty) {
+    if (shiftId.trim().isEmpty) {
       return const CheckoutResult(
         error: 'Sesi Shift Kasir belum dibuka! Buka shift terlebih dahulu di tab Kelola Shift.',
       );
     }
 
-    if (storeId.isEmpty) {
+    if (dbUserId.trim().isEmpty) {
+      return const CheckoutResult(
+        error: 'Sesi Kasir tidak valid (User ID kosong). Silakan login ulang.',
+      );
+    }
+
+    if (storeId.trim().isEmpty) {
       return const CheckoutResult(
         error: 'Data Toko kasir tidak ditemukan. Silakan login kembali.',
       );
     }
 
     final totalAmount = cart.totalPrice;
+    if (totalAmount.isNaN || totalAmount <= 0) {
+      return const CheckoutResult(
+        error: 'Total transaksi tidak valid (harus lebih besar dari Rp 0).',
+      );
+    }
+
+    for (final item in cart.items) {
+      if (item.quantity <= 0) {
+        return CheckoutResult(
+          error: 'Kuantitas untuk "${item.productName}" tidak valid (harus lebih dari 0).',
+        );
+      }
+      if (item.unitPrice < 0 || item.subtotal < 0) {
+        return CheckoutResult(
+          error: 'Harga untuk "${item.productName}" tidak valid.',
+        );
+      }
+    }
 
     if (paymentMethod == 'CASH') {
-      if (cashReceived == null || cashReceived < totalAmount) {
+      if (cashReceived == null || cashReceived.isNaN || cashReceived < totalAmount) {
         return const CheckoutResult(
           error: 'Uang tunai yang diterima kurang dari total belanja.',
         );

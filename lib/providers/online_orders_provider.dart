@@ -174,12 +174,18 @@ class OnlineOrdersNotifier extends Notifier<OnlineOrdersState> {
 
       final List<dynamic> response = await _client
           .from('Order')
-          .select('*, items:OrderItem(*)')
+          .select('''
+            id, storeId, createdById, orderNumber, queueNumber, source, status,
+            publicQrToken, customerNameSnapshot, customerPhoneSnapshot, productSubtotal,
+            promotionDiscount, taxableSubtotal, grandTotal, cashPayable, paidAt, createdAt, expiresAt,
+            items:OrderItem(id, orderId, productId, variantId, variantNameSnapshot, productNameSnapshot, quantity, unitPrice, subtotal, notes)
+          ''')
           .eq('storeId', storeId)
           .eq('source', 'PUBLIC_QR')
           .eq('status', 'PENDING_PAYMENT')
           .gt('expiresAt', nowUtc)
-          .order('createdAt', ascending: false);
+          .order('createdAt', ascending: false)
+          .limit(100);
 
       final List<OrderModel> loadedOrders = response
           .whereType<Map<String, dynamic>>()

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants/app_colors.dart';
@@ -7,6 +8,7 @@ import '../../core/utils/app_toast.dart';
 import '../../models/order_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/printer_provider.dart';
+import '../../providers/shift_provider.dart';
 
 class HistoryScreen extends ConsumerStatefulWidget {
   const HistoryScreen({super.key});
@@ -36,6 +38,17 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     });
 
     try {
+      final activeShift = ref.read(shiftProvider).activeShift;
+      if (activeShift == null) {
+        if (mounted) {
+          setState(() {
+            _orders = [];
+            _isLoading = false;
+          });
+        }
+        return;
+      }
+
       final auth = ref.read(authProvider);
       final storeId = auth.storeId;
       final supaClient = Supabase.instance.client;
@@ -45,7 +58,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         customerNameSnapshot, customerPhoneSnapshot, productSubtotal,
         promotionDiscount, taxableSubtotal, grandTotal, cashPayable, paidAt, createdAt,
         items:OrderItem(id, orderId, productId, variantId, productNameSnapshot, quantity, unitPrice, subtotal, notes),
-        payment:Payment(id, orderId, shiftId, method, status, amount, cashReceived, changeAmount, paidAt),
+        payment:Payment!inner(id, orderId, shiftId, method, status, amount, cashReceived, changeAmount, paidAt),
         createdBy:User(id, name, username)
       ''');
 
@@ -53,13 +66,15 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         query = query.eq('storeId', storeId);
       }
 
+      query = query.eq('payment.shiftId', activeShift.id);
+
       if (_filterTodayOnly) {
         final now = DateTime.now();
         final startOfDay = DateTime(now.year, now.month, now.day).toIso8601String();
         query = query.gte('createdAt', startOfDay);
       }
 
-      final response = await query.order('createdAt', ascending: false).limit(50);
+      final response = await query.order('createdAt', ascending: false).limit(100);
 
       final List<OrderModel> fetched = (response as List)
           .map((data) => OrderModel.fromMap(data as Map<String, dynamic>))
@@ -415,6 +430,13 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final activeShift = ref.watch(shiftProvider).activeShift;
+    ref.listen(shiftProvider.select((s) => s.activeShift?.id), (previous, next) {
+      if (previous != next) {
+        _fetchOrders();
+      }
+    });
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Column(
@@ -484,25 +506,59 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                             ),
                           ),
                         )
-                      : _orders.isEmpty
+                      : activeShift == null
                           ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.receipt_long_outlined, size: 56, color: Colors.grey.shade400),
-                                  const SizedBox(height: 16),
-                                  const Text(
-                                    'Belum Ada Transaksi',
-                                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  const Text(
-                                    'Transaksi penjualan POS yang selesai akan muncul di sini.',
-                                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                                  ),
-                                ],
+                              child: Padding(
+                                padding: const EdgeInsets.all(24),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.lock_clock_outlined, size: 56, color: Colors.grey.shade400),
+                                    const SizedBox(height: 16),
+                                    const Text(
+                                      'Shift Kasir Belum Dibuka',
+                                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    const Text(
+                                      'Buka shift kasir terlebih dahulu untuk mencatat dan melihat riwayat transaksi sesi ini.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    ElevatedButton.icon(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppColors.primary,
+                                        foregroundColor: Colors.white,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      ),
+                                      onPressed: () => context.go('/shift'),
+                                      icon: const Icon(Icons.meeting_room_rounded, size: 18),
+                                      label: const Text('Buka Shift Kasir Sekarang'),
+                                    ),
+                                  ],
+                                ),
                               ),
                             )
+                          : _orders.isEmpty
+                              ? Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.receipt_long_outlined, size: 56, color: Colors.grey.shade400),
+                                      const SizedBox(height: 16),
+                                      const Text(
+                                        'Belum Ada Transaksi di Shift Ini',
+                                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      const Text(
+                                        'Transaksi penjualan POS yang selesai pada shift ini akan muncul di sini.',
+                                        style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                                      ),
+                                    ],
+                                  ),
+                                )
                           : ListView.builder(
                               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                               itemCount: _orders.length,

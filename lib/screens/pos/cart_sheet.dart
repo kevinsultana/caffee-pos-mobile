@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/utils/app_toast.dart';
@@ -711,10 +712,22 @@ class _CartSheetState extends ConsumerState<CartSheet> {
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: (item.productImageUrl != null && item.productImageUrl!.trim().isNotEmpty)
-                                    ? Image.network(
-                                        item.productImageUrl!,
+                                    ? CachedNetworkImage(
+                                        imageUrl: item.productImageUrl!,
                                         fit: BoxFit.cover,
-                                        errorBuilder: (context, error, stackTrace) => const Icon(
+                                        memCacheWidth: 100,
+                                        memCacheHeight: 100,
+                                        placeholder: (context, url) => const Center(
+                                          child: SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: AppColors.primary,
+                                            ),
+                                          ),
+                                        ),
+                                        errorWidget: (context, url, error) => const Icon(
                                           Icons.coffee_rounded,
                                           color: AppColors.primary,
                                           size: 24,

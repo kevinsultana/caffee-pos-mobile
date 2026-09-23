@@ -286,6 +286,10 @@ class ShiftNotifier extends Notifier<ShiftState> {
       return 'Sesi kasir tidak valid. Silakan login kembali.';
     }
 
+    if (openingCash.isNaN || openingCash < 0) {
+      return 'Modal kas awal tidak boleh bernilai negatif.';
+    }
+
     state = state.copyWith(isLoading: true, errorMessage: () => null);
 
     try {
@@ -377,6 +381,24 @@ class ShiftNotifier extends Notifier<ShiftState> {
     final current = state.activeShift;
     if (current == null) {
       return 'Tidak ada shift aktif yang ditemukan.';
+    }
+
+    if (actualCash.isNaN || actualCash < 0) {
+      final err = 'Uang kas fisik aktual tidak boleh bernilai negatif.';
+      state = state.copyWith(errorMessage: () => err);
+      return err;
+    }
+
+    if (depositedCash.isNaN || depositedCash < 0) {
+      final err = 'Uang kas yang disetor tidak boleh bernilai negatif.';
+      state = state.copyWith(errorMessage: () => err);
+      return err;
+    }
+
+    if (depositedCash > actualCash) {
+      final err = 'Uang yang disetor ($depositedCash) tidak boleh melebihi uang fisik aktual ($actualCash).';
+      state = state.copyWith(errorMessage: () => err);
+      return err;
     }
 
     state = state.copyWith(isLoading: true, errorMessage: () => null);
