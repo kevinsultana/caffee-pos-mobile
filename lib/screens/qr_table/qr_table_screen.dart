@@ -11,6 +11,9 @@ import '../../core/utils/app_toast.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/printer_provider.dart';
 
+/// URL tetap menu QR publik — langsung diarahkan ke halaman menu
+const _kMenuUrl = 'https://caffee-pos.vercel.app/menu';
+
 class QrTableScreen extends ConsumerStatefulWidget {
   const QrTableScreen({super.key});
 
@@ -19,45 +22,18 @@ class QrTableScreen extends ConsumerStatefulWidget {
 }
 
 class _QrTableScreenState extends ConsumerState<QrTableScreen> {
-  final TextEditingController _tableController = TextEditingController(
-    text: 'Meja 01',
-  );
   final GlobalKey _qrCardKey = GlobalKey();
-
-  String _currentTable = 'Meja 01';
   bool _isSaving = false;
-
-  @override
-  void dispose() {
-    _tableController.dispose();
-    super.dispose();
-  }
-
-  void _generateQr() {
-    FocusScope.of(context).unfocus();
-    final input = _tableController.text.trim();
-    if (input.isNotEmpty) {
-      setState(() {
-        _currentTable = input;
-      });
-    }
-  }
-
-  String _buildMenuUrl(String table) {
-    final encodedTable = Uri.encodeComponent(table);
-    return 'https://caffee-pos.vercel.app/menu?table=$encodedTable';
-  }
 
   Future<void> _saveQrToGallery() async {
     setState(() => _isSaving = true);
 
     try {
-      // Delay singkat untuk memastikan RepaintBoundary ter-render sempurna dengan resolusi penuh
+      // Delay singkat untuk memastikan RepaintBoundary ter-render sempurna
       await Future.delayed(const Duration(milliseconds: 150));
 
       final boundary =
-          _qrCardKey.currentContext?.findRenderObject()
-              as RenderRepaintBoundary?;
+          _qrCardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
       if (boundary == null) {
         throw Exception('Gagal mendeteksi tampilan kartu QR.');
       }
@@ -71,19 +47,15 @@ class _QrTableScreenState extends ConsumerState<QrTableScreen> {
         throw Exception('Gagal mengonversi gambar ke format PNG.');
       }
 
-      // Sanitasi nama file agar valid di filesystem
-      final cleanFileName =
-          'QR_${_currentTable.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_')}';
-
       // Simpan ke galeri menggunakan package Gal (MediaStore API modern)
-      await Gal.putImageBytes(pngBytes, name: cleanFileName);
+      await Gal.putImageBytes(pngBytes, name: 'QR_Menu_Cafe');
 
       if (!mounted) return;
       setState(() => _isSaving = false);
 
       AppToast.showSuccess(
         context,
-        'QR Code $_currentTable berhasil disimpan ke Galeri!',
+        'QR Code Menu berhasil disimpan ke Galeri!',
         duration: const Duration(seconds: 3),
       );
     } on GalException catch (e) {
@@ -92,20 +64,16 @@ class _QrTableScreenState extends ConsumerState<QrTableScreen> {
 
       String errorMessage = 'Gagal menyimpan gambar ke galeri.';
       if (e.type == GalExceptionType.accessDenied) {
-        errorMessage = 'Izin akses galeri ditolak. Harap izinkan akses penyimpanan di Pengaturan Aplikasi.';
+        errorMessage =
+            'Izin akses galeri ditolak. Harap izinkan akses penyimpanan di Pengaturan Aplikasi.';
       } else if (e.type == GalExceptionType.notEnoughSpace) {
         errorMessage = 'Ruang penyimpanan perangkat tidak mencukupi.';
       }
 
-      AppToast.showError(
-        context,
-        errorMessage,
-        duration: const Duration(seconds: 4),
-      );
+      AppToast.showError(context, errorMessage, duration: const Duration(seconds: 4));
     } catch (e) {
       if (!mounted) return;
       setState(() => _isSaving = false);
-
       AppToast.showError(context, 'Terjadi kesalahan: ${e.toString()}');
     }
   }
@@ -114,10 +82,8 @@ class _QrTableScreenState extends ConsumerState<QrTableScreen> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
     final printerState = ref.watch(printerProvider);
-    final storeName = authState.storeName.isNotEmpty
-        ? authState.storeName
-        : 'SCHAW CAFE';
-    final qrUrl = _buildMenuUrl(_currentTable);
+    final storeName =
+        authState.storeName.isNotEmpty ? authState.storeName : 'SCHAW CAFE';
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -129,112 +95,9 @@ class _QrTableScreenState extends ConsumerState<QrTableScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // 1. Form Input Nomor Meja
-                Card(
-                  elevation: 0,
-                  color: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    side: const BorderSide(color: AppColors.border),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Nama atau Nomor Meja',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _tableController,
-                                textInputAction: TextInputAction.done,
-                                onSubmitted: (_) => _generateQr(),
-                                decoration: InputDecoration(
-                                  hintText: 'Contoh: Meja 01, VIP 2, Outdoor 3',
-                                  prefixIcon: const Icon(
-                                    Icons.table_restaurant_rounded,
-                                    size: 20,
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                    vertical: 12,
-                                  ),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(
-                                      color: AppColors.border,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            SizedBox(
-                              height: 48,
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                                onPressed: _generateQr,
-                                child: const Text('Terapkan'),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Preset chips meja
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 6,
-                          children:
-                              [
-                                'Meja 01',
-                                'Meja 02',
-                                'Meja 03',
-                                'Meja 04',
-                                'VIP 1',
-                                'Outdoor 1',
-                              ].map((t) {
-                                return ActionChip(
-                                  label: Text(
-                                    t,
-                                    style: const TextStyle(fontSize: 11),
-                                  ),
-                                  backgroundColor: _currentTable == t
-                                      ? AppColors.primaryContainer
-                                      : AppColors.surfaceMuted,
-                                  side: BorderSide(
-                                    color: _currentTable == t
-                                        ? AppColors.primary
-                                        : AppColors.border,
-                                  ),
-                                  onPressed: () {
-                                    _tableController.text = t;
-                                    _generateQr();
-                                  },
-                                );
-                              }).toList(),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
                 const SizedBox(height: 20),
 
-                // 2. KARTU TENT CARD MEJA (Dibungkus RepaintBoundary untuk Capture)
+                // Kartu QR (dibungkus RepaintBoundary untuk capture ke galeri)
                 Center(
                   child: RepaintBoundary(
                     key: _qrCardKey,
@@ -296,7 +159,7 @@ class _QrTableScreenState extends ConsumerState<QrTableScreen> {
                           ),
                           const SizedBox(height: 18),
 
-                          // QR Code Container
+                          // QR Code
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
@@ -308,7 +171,7 @@ class _QrTableScreenState extends ConsumerState<QrTableScreen> {
                               ),
                             ),
                             child: QrImageView(
-                              data: qrUrl,
+                              data: _kMenuUrl,
                               version: QrVersions.auto,
                               size: 200,
                               gapless: true,
@@ -328,41 +191,6 @@ class _QrTableScreenState extends ConsumerState<QrTableScreen> {
                           ),
                           const SizedBox(height: 18),
 
-                          // Badge Nomor Meja
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            decoration: BoxDecoration(
-                              color: AppColors.primaryContainer,
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: AppColors.primaryLight),
-                            ),
-                            child: Column(
-                              children: [
-                                const Text(
-                                  'NOMOR MEJA',
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 1.2,
-                                    color: AppColors.primaryDark,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  _currentTable.toUpperCase(),
-                                  style: const TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: -0.3,
-                                    color: AppColors.primaryDark,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-
                           // Footer Kartu
                           const Text(
                             'Buka kamera ponsel Anda & arahkan ke QR Code',
@@ -380,7 +208,7 @@ class _QrTableScreenState extends ConsumerState<QrTableScreen> {
 
                 const SizedBox(height: 24),
 
-                // 3. Tombol Aksi Simpan & Cetak
+                // Tombol Simpan ke Galeri
                 SizedBox(
                   height: 50,
                   child: ElevatedButton.icon(
@@ -433,11 +261,9 @@ class _QrTableScreenState extends ConsumerState<QrTableScreen> {
                       );
                       return;
                     }
-
-                    // Tampilkan konfirmasi kirim ke printer
                     AppToast.showInfo(
                       context,
-                      'Mengirim data Tent Card $_currentTable ke printer thermal...',
+                      'Mengirim data Tent Card ke printer thermal...',
                       duration: const Duration(seconds: 2),
                     );
                   },
@@ -458,25 +284,21 @@ class _QrTableScreenState extends ConsumerState<QrTableScreen> {
 
                 const SizedBox(height: 16),
 
-                // Link URL info
+                // Info URL
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: AppColors.surfaceMuted,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Row(
+                  child: const Row(
                     children: [
-                      const Icon(
-                        Icons.link_rounded,
-                        size: 16,
-                        color: AppColors.textMuted,
-                      ),
-                      const SizedBox(width: 8),
+                      Icon(Icons.link_rounded, size: 16, color: AppColors.textMuted),
+                      SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          qrUrl,
-                          style: const TextStyle(
+                          _kMenuUrl,
+                          style: TextStyle(
                             fontSize: 11,
                             color: AppColors.textSecondary,
                             fontFamily: 'monospace',
