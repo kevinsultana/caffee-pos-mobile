@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:intl/intl.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 
@@ -113,12 +114,18 @@ class BluetoothPrinterService {
     bytes.addAll(utf8.encode('No. Order : ${order.orderNumber}\n'));
     if (order.queueNumber != null) {
       bytes.addAll(boldOn);
-      bytes.addAll(utf8.encode('Antrean   : ${order.queueNumber} (${order.diningLabel})\n'));
+      bytes.addAll(
+        utf8.encode(
+          'Antrean   : ${order.queueNumber} (${order.diningLabel})\n',
+        ),
+      );
       bytes.addAll(boldOff);
     }
     bytes.addAll(utf8.encode('Waktu     : ${order.formattedDate}\n'));
     if (cashierName != null || order.cashierName != null) {
-      bytes.addAll(utf8.encode('Kasir     : ${cashierName ?? order.cashierName}\n'));
+      bytes.addAll(
+        utf8.encode('Kasir     : ${cashierName ?? order.cashierName}\n'),
+      );
     }
     bytes.addAll(utf8.encode('Pelanggan : ${order.customerNameSnapshot}\n'));
     bytes.addAll(utf8.encode('--------------------------------\n'));
@@ -131,11 +138,17 @@ class BluetoothPrinterService {
 
     for (final item in order.items) {
       bytes.addAll(utf8.encode('${item.productNameSnapshot}\n'));
-      if (item.variantNameSnapshot != null && item.variantNameSnapshot!.isNotEmpty) {
+      if (item.variantNameSnapshot != null &&
+          item.variantNameSnapshot!.isNotEmpty) {
         bytes.addAll(utf8.encode('  (${item.variantNameSnapshot})\n'));
       }
-      final priceDetail = '${item.quantity} x ${currencyFmt.format(item.unitPrice)}';
-      bytes.addAll(utf8.encode(_formatRow('  $priceDetail', currencyFmt.format(item.subtotal))));
+      final priceDetail =
+          '${item.quantity} x ${currencyFmt.format(item.unitPrice)}';
+      bytes.addAll(
+        utf8.encode(
+          _formatRow('  $priceDetail', currencyFmt.format(item.subtotal)),
+        ),
+      );
 
       if (item.notes != null && item.notes!.isNotEmpty) {
         bytes.addAll(utf8.encode('  * ${item.notes}\n'));
@@ -145,9 +158,16 @@ class BluetoothPrinterService {
     bytes.addAll(utf8.encode('--------------------------------\n'));
 
     // 5. Total Pembayaran
-    bytes.addAll(_formatRow('Subtotal', currencyFmt.format(order.productSubtotal)).codeUnits);
+    bytes.addAll(
+      _formatRow(
+        'Subtotal',
+        currencyFmt.format(order.productSubtotal),
+      ).codeUnits,
+    );
     bytes.addAll(boldOn);
-    bytes.addAll(_formatRow('TOTAL', currencyFmt.format(order.grandTotal)).codeUnits);
+    bytes.addAll(
+      _formatRow('TOTAL', currencyFmt.format(order.grandTotal)).codeUnits,
+    );
     bytes.addAll(boldOff);
 
     // 6. Rincian Metode Bayar
@@ -155,9 +175,19 @@ class BluetoothPrinterService {
     if (payment != null) {
       bytes.addAll(_formatRow('Metode Bayar', payment.method).codeUnits);
       if (payment.method == 'CASH' && payment.cashReceived != null) {
-        bytes.addAll(_formatRow('Bayar Tunai', currencyFmt.format(payment.cashReceived!)).codeUnits);
+        bytes.addAll(
+          _formatRow(
+            'Bayar Tunai',
+            currencyFmt.format(payment.cashReceived!),
+          ).codeUnits,
+        );
         if (payment.changeAmount != null) {
-          bytes.addAll(_formatRow('Kembalian', currencyFmt.format(payment.changeAmount!)).codeUnits);
+          bytes.addAll(
+            _formatRow(
+              'Kembalian',
+              currencyFmt.format(payment.changeAmount!),
+            ).codeUnits,
+          );
         }
       }
     }
@@ -190,7 +220,11 @@ class BluetoothPrinterService {
     const boldOn = [27, 69, 1]; // Tebal aktif
     const boldOff = [27, 69, 0]; // Tebal mati
     const textDoubleHeight = [29, 33, 16]; // Double height (GS ! 16)
-    const textDoubleBoth = [29, 33, 17]; // Double width + double height (GS ! 17)
+    const textDoubleBoth = [
+      29,
+      33,
+      17,
+    ]; // Double width + double height (GS ! 17)
     const textNormal = [29, 33, 0]; // Ukuran teks normal
     const lineFeed = [10]; // Newline
 
@@ -206,7 +240,9 @@ class BluetoothPrinterService {
 
     final queueNum = order.queueNumber ?? '-';
     final isTakeaway = !order.isDineIn;
-    final typeBadge = isTakeaway ? '[ BUNGKUS / TAKEAWAY ]' : '[ DINE IN / DI TEMPAT ]';
+    final typeBadge = isTakeaway
+        ? '[ BUNGKUS / TAKEAWAY ]'
+        : '[ DINE IN / DI TEMPAT ]';
     bytes.addAll(utf8.encode('$typeBadge\n'));
     bytes.addAll(boldOff);
     bytes.addAll(utf8.encode('================================\n'));
@@ -227,19 +263,32 @@ class BluetoothPrinterService {
     bytes.addAll(alignLeft);
     bytes.addAll(utf8.encode('No. Order : ${order.orderNumber}\n'));
     bytes.addAll(utf8.encode('Waktu     : ${order.formattedDate}\n'));
-    final custName = order.customerNameSnapshot.trim().isNotEmpty ? order.customerNameSnapshot : 'Umum';
+    final custName = order.customerNameSnapshot.trim().isNotEmpty
+        ? order.customerNameSnapshot
+        : 'Umum';
     bytes.addAll(utf8.encode('Pelanggan : $custName\n'));
-    bytes.addAll(utf8.encode('Tipe      : ${isTakeaway ? 'Takeaway (Bungkus)' : 'Dine In (Makan di Tempat)'}\n'));
-    bytes.addAll(utf8.encode('Sumber    : ${order.source == 'PUBLIC_QR' ? 'QR Online' : 'Kasir POS'}\n'));
+    bytes.addAll(
+      utf8.encode(
+        'Tipe      : ${isTakeaway ? 'Takeaway / Bungkus' : 'Dine In / Di Tempat'}\n',
+      ),
+    );
+    bytes.addAll(
+      utf8.encode(
+        'Sumber    : ${order.source == 'PUBLIC_QR' ? 'QR Online' : 'Kasir POS'}\n',
+      ),
+    );
     bytes.addAll(utf8.encode('--------------------------------\n'));
 
     // 5. Items Pesanan (Dapur — TANPA HARGA)
     for (final item in order.items) {
       bytes.addAll(boldOn);
-      bytes.addAll(utf8.encode('${item.quantity}x ${item.productNameSnapshot}\n'));
+      bytes.addAll(
+        utf8.encode('${item.quantity}x ${item.productNameSnapshot}\n'),
+      );
       bytes.addAll(boldOff);
 
-      if (item.variantNameSnapshot != null && item.variantNameSnapshot!.isNotEmpty) {
+      if (item.variantNameSnapshot != null &&
+          item.variantNameSnapshot!.isNotEmpty) {
         bytes.addAll(utf8.encode('   Varian: ${item.variantNameSnapshot}\n'));
       }
       if (item.notes != null && item.notes!.isNotEmpty) {
@@ -263,7 +312,9 @@ class BluetoothPrinterService {
   }
 
   /// Cetak struk pengujian printer thermal
-  static Future<bool> printTestReceipt({String storeName = 'SCHAW CAFE'}) async {
+  static Future<bool> printTestReceipt({
+    String storeName = 'SCHAW CAFE',
+  }) async {
     final connected = await isConnected();
     if (!connected) return false;
 

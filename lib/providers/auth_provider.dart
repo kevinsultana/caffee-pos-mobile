@@ -111,33 +111,31 @@ class AuthNotifier extends Notifier<AuthState> {
       final userRecord = await query.maybeSingle();
 
       if (userRecord == null) {
-        state = state.copyWith(isLoading: false);
-        return 'Username atau kata sandi salah.';
+        const err = 'Username atau kata sandi salah.';
+        state = state.copyWith(isLoading: false, errorMessage: () => err);
+        return err;
       }
 
       // 2. Validasi status akun (RESIGNED / INACTIVE)
       final status = userRecord['status']?.toString() ?? 'ACTIVE';
       if (status == 'RESIGNED') {
-        state = state.copyWith(
-          isLoading: false,
-          errorMessage: () => 'Akun kasir telah RESIGNED dan tidak dapat mengakses sistem.',
-        );
-        return 'Akun kasir telah RESIGNED dan tidak dapat mengakses sistem.';
+        const err = 'Akun kasir telah RESIGNED dan tidak dapat mengakses sistem.';
+        state = state.copyWith(isLoading: false, errorMessage: () => err);
+        return err;
       }
 
       if (status == 'INACTIVE') {
-        state = state.copyWith(
-          isLoading: false,
-          errorMessage: () => 'Akun kasir sedang DINONAKTIFKAN. Silakan hubungi Owner.',
-        );
-        return 'Akun kasir sedang DINONAKTIFKAN. Silakan hubungi Owner.';
+        const err = 'Akun kasir sedang DINONAKTIFKAN. Silakan hubungi Owner.';
+        state = state.copyWith(isLoading: false, errorMessage: () => err);
+        return err;
       }
 
       // 3. Verifikasi Kata Sandi dengan BCrypt (sesuai passwordHash dari web app)
       final passwordHash = userRecord['passwordHash']?.toString() ?? '';
       if (passwordHash.isEmpty) {
-        state = state.copyWith(isLoading: false);
-        return 'Akun belum memiliki kata sandi yang valid.';
+        const err = 'Akun belum memiliki kata sandi yang valid.';
+        state = state.copyWith(isLoading: false, errorMessage: () => err);
+        return err;
       }
 
       bool isPasswordValid = false;
@@ -148,8 +146,9 @@ class AuthNotifier extends Notifier<AuthState> {
       }
 
       if (!isPasswordValid) {
-        state = state.copyWith(isLoading: false);
-        return 'Username atau kata sandi salah.';
+        const err = 'Username atau kata sandi salah.';
+        state = state.copyWith(isLoading: false, errorMessage: () => err);
+        return err;
       }
 
       // 4. Simpan ID sesi ke local storage
@@ -168,7 +167,18 @@ class AuthNotifier extends Notifier<AuthState> {
 
       return null;
     } catch (e) {
-      final err = 'Terjadi kesalahan saat masuk: ${e.toString()}';
+      debugPrint('Error signInWithUsernameOrEmail: $e');
+      String err = 'Terjadi kesalahan saat masuk.';
+      final str = e.toString().toLowerCase();
+      if (str.contains('permission denied') || str.contains('42501')) {
+        err = 'Akses database ditolak (Periksa izin schema Supabase).';
+      } else if (str.contains('socketexception') ||
+          str.contains('failed host lookup') ||
+          str.contains('network')) {
+        err = 'Gagal terhubung ke server. Periksa koneksi internet Anda.';
+      } else {
+        err = 'Terjadi kesalahan: ${e.toString()}';
+      }
       state = state.copyWith(isLoading: false, errorMessage: () => err);
       return err;
     }
@@ -179,7 +189,7 @@ class AuthNotifier extends Notifier<AuthState> {
       signInWithUsernameOrEmail(usernameOrEmail, password);
 
   /// Login instan mode Demo (mengambil akun kasir aktif pertama dari database jika tersedia)
-  Future<void> loginDemo([String username = 'owner']) async {
+  Future<String?> loginDemo([String username = 'owner']) async {
     state = state.copyWith(isLoading: true, errorMessage: () => null);
 
     try {
@@ -203,10 +213,10 @@ class AuthNotifier extends Notifier<AuthState> {
           isLoading: false,
           errorMessage: () => null,
         );
-        return;
+        return null;
       }
-    } catch (_) {
-      // Abaikan jika query demo gagal, gunakan data fallback
+    } catch (e) {
+      debugPrint('Error login demo: $e');
     }
 
     // Fallback akun dummy jika database belum memiliki user
@@ -226,6 +236,7 @@ class AuthNotifier extends Notifier<AuthState> {
       isLoading: false,
       errorMessage: () => null,
     );
+    return null;
   }
 
   /// Sign out dari sesi aktif

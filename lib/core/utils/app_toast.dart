@@ -55,11 +55,46 @@ class AppToast {
     Duration duration = const Duration(milliseconds: 2500),
     IconData? customIcon,
   }) {
+    debugPrint('[AppToast ${type.name.toUpperCase()}] $message');
+
     // Tutup toast aktif sebelumnya jika ada
     _dismissImmediately();
 
-    final overlay = Overlay.maybeOf(context, rootOverlay: true);
-    if (overlay == null) return;
+    final overlay = Overlay.maybeOf(context, rootOverlay: true) ??
+        Overlay.maybeOf(context);
+    if (overlay == null) {
+      try {
+        final messenger = ScaffoldMessenger.maybeOf(context);
+        messenger?.removeCurrentSnackBar();
+        messenger?.showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(
+                  type == ToastType.error
+                      ? Icons.error_rounded
+                      : type == ToastType.success
+                          ? Icons.check_circle_rounded
+                          : Icons.info_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Expanded(child: Text(message)),
+              ],
+            ),
+            backgroundColor: type == ToastType.error
+                ? AppColors.rose
+                : type == ToastType.warning
+                    ? AppColors.amber
+                    : const Color(0xFF0F172A),
+            behavior: SnackBarBehavior.floating,
+            duration: duration,
+          ),
+        );
+      } catch (_) {}
+      return;
+    }
 
     final key = GlobalKey<_ToastWidgetState>();
     _activeKey = key;

@@ -17,6 +17,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _usernameController = TextEditingController(text: '');
   final _passwordController = TextEditingController(text: '');
   bool _obscurePassword = true;
+  String? _errorMessage;
 
   @override
   void dispose() {
@@ -30,6 +31,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     // Sembunyikan keyboard
     FocusScope.of(context).unfocus();
+    setState(() => _errorMessage = null);
 
     final authNotifier = ref.read(authProvider.notifier);
     final error = await authNotifier.signInWithUsernameOrEmail(
@@ -38,6 +40,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
 
     if (error != null && mounted) {
+      setState(() => _errorMessage = error);
       AppToast.showError(
         context,
         error,
@@ -48,7 +51,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _handleDemoLogin() async {
     FocusScope.of(context).unfocus();
-    await ref.read(authProvider.notifier).loginDemo('owner');
+    setState(() => _errorMessage = null);
+    final error = await ref.read(authProvider.notifier).loginDemo('owner');
+    if (error != null && mounted) {
+      setState(() => _errorMessage = error);
+      AppToast.showError(
+        context,
+        error,
+        duration: const Duration(seconds: 4),
+      );
+    }
   }
 
   @override
@@ -59,6 +71,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     ref.listen<AuthState>(authProvider, (previous, next) {
       if (next.errorMessage != null &&
           next.errorMessage != previous?.errorMessage) {
+        setState(() => _errorMessage = next.errorMessage);
         AppToast.showError(context, next.errorMessage!);
       }
     });
@@ -201,7 +214,48 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             return null;
                           },
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 20),
+
+                        // Error Banner (Jika ada pesan error validasi / network / kredensial)
+                        if (_errorMessage != null) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.rose.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: AppColors.rose.withValues(alpha: 0.35),
+                                width: 1,
+                              ),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(
+                                  Icons.error_outline_rounded,
+                                  color: AppColors.rose,
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    _errorMessage!,
+                                    style: const TextStyle(
+                                      color: AppColors.rose,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
 
                         // Login Button
                         ElevatedButton(
