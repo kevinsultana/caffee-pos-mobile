@@ -20,6 +20,47 @@ enum CashMovementType {
   }
 }
 
+/// Kategori standar untuk pengeluaran kasir (CASH_OUT)
+class CashOutCategory {
+  static const String bahanBakuDarurat = 'BAHAN_BAKU_DARURAT';
+  static const String keperluanToko = 'KEPERLUAN_TOKO';
+  static const String setorOwner = 'SETOR_OWNER';
+  static const String lainnya = 'LAINNYA';
+
+  static const List<Map<String, String>> options = [
+    {
+      'code': bahanBakuDarurat,
+      'title': 'Bahan Baku Darurat',
+      'subtitle': 'Es batu, susu, gas, bahan darurat',
+    },
+    {
+      'code': keperluanToko,
+      'title': 'Keperluan Toko',
+      'subtitle': 'Sapu, kresek/plastik, lakban, tisu',
+    },
+    {
+      'code': setorOwner,
+      'title': 'Setor ke Owner',
+      'subtitle': 'Tarik tunai / serah terima di tengah shift',
+    },
+    {
+      'code': lainnya,
+      'title': 'Lain-lain',
+      'subtitle': 'Pengeluaran operasional lain',
+    },
+  ];
+
+  static String getLabel(String? category) {
+    return switch (category) {
+      bahanBakuDarurat => 'Bahan Baku Darurat',
+      keperluanToko => 'Keperluan Toko',
+      setorOwner => 'Setor ke Owner',
+      lainnya => 'Lain-lain',
+      _ => category ?? '-',
+    };
+  }
+}
+
 @immutable
 class CashMovementModel {
   final String id;
@@ -29,6 +70,7 @@ class CashMovementModel {
   final CashMovementType type;
   final double amount;
   final String reason;
+  final String? category;
   final DateTime createdAt;
 
   const CashMovementModel({
@@ -39,11 +81,14 @@ class CashMovementModel {
     required this.type,
     required this.amount,
     required this.reason,
+    this.category,
     required this.createdAt,
   });
 
   bool get isCashIn => type == CashMovementType.cashIn;
   bool get isCashOut => type == CashMovementType.cashOut;
+
+  String get categoryLabel => CashOutCategory.getLabel(category);
 
   String get formattedAmount {
     final fmt = NumberFormat.currency(
@@ -80,6 +125,7 @@ class CashMovementModel {
           ? (map['amount'] as num).toDouble()
           : double.tryParse(map['amount']?.toString() ?? '0') ?? 0.0,
       reason: map['reason']?.toString() ?? '',
+      category: map['category']?.toString(),
       createdAt: createdAt,
     );
   }

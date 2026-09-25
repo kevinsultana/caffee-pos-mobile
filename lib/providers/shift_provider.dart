@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
+import '../core/utils/uuid_generator.dart';
 import '../models/cash_movement_model.dart';
 import '../models/shift_model.dart';
 import 'auth_provider.dart';
@@ -195,7 +196,7 @@ class ShiftNotifier extends Notifier<ShiftState> {
       // Query 2: Semua CashMovement (kas masuk/keluar) dalam shift ini
       final movementsResp = await supaClient
           .from('CashMovement')
-          .select('id, storeId, shiftId, userId, type, amount, reason, createdAt')
+          .select('id, storeId, shiftId, userId, type, amount, reason, category, createdAt')
           .eq('shiftId', shiftId)
           .order('createdAt', ascending: false);
 
@@ -237,6 +238,7 @@ class ShiftNotifier extends Notifier<ShiftState> {
     required String type, // 'CASH_IN' atau 'CASH_OUT'
     required double amount,
     required String reason,
+    String? category, // 'BAHAN_BAKU_DARURAT', 'KEPERLUAN_TOKO', 'SETOR_OWNER', 'LAINNYA'
   }) async {
     final auth = ref.read(authProvider);
     final currentShift = state.activeShift;
@@ -260,7 +262,8 @@ class ShiftNotifier extends Notifier<ShiftState> {
       final supaClient = Supabase.instance.client;
       final nowUtc = DateTime.now().toUtc().toIso8601String();
 
-      await supaClient.from('CashMovement').insert({
+      final insertData = <String, dynamic>{
+        'id': UuidGenerator.v4(),
         'storeId': auth.storeId.isNotEmpty ? auth.storeId : null,
         'shiftId': currentShift.id,
         'userId': auth.dbUserId,
@@ -268,7 +271,13 @@ class ShiftNotifier extends Notifier<ShiftState> {
         'amount': amount,
         'reason': reason.trim(),
         'createdAt': nowUtc,
-      });
+      };
+
+      if (category != null && category.isNotEmpty) {
+        insertData['category'] = category;
+      }
+
+      await supaClient.from('CashMovement').insert(insertData);
 
       // Refresh summary setelah insert berhasil
       await fetchShiftSummary(currentShift.id, openingCash: currentShift.openingCash);
@@ -341,6 +350,7 @@ class ShiftNotifier extends Notifier<ShiftState> {
 
       final nowUtc = DateTime.now().toUtc().toIso8601String();
       final insertData = {
+        'id': UuidGenerator.v4(),
         'storeId': storeId.isNotEmpty ? storeId : null,
         'userId': auth.dbUserId,
         'status': 'OPEN',
@@ -373,10 +383,10 @@ class ShiftNotifier extends Notifier<ShiftState> {
     }
   }
 
-  /// Tutup shift kasir yang sedang aktif
+  /// Tutup shift kasir yang sedang aktif (Alur Setor Semua: 100% Uang Fisik Disetor)
   Future<String?> closeShift({
     required double actualCash,
-    double depositedCash = 0,
+    double? depositedCash,
   }) async {
     final current = state.activeShift;
     if (current == null) {
@@ -389,17 +399,8 @@ class ShiftNotifier extends Notifier<ShiftState> {
       return err;
     }
 
-    if (depositedCash.isNaN || depositedCash < 0) {
-      final err = 'Uang kas yang disetor tidak boleh bernilai negatif.';
-      state = state.copyWith(errorMessage: () => err);
-      return err;
-    }
-
-    if (depositedCash > actualCash) {
-      final err = 'Uang yang disetor ($depositedCash) tidak boleh melebihi uang fisik aktual ($actualCash).';
-      state = state.copyWith(errorMessage: () => err);
-      return err;
-    }
+    // Alur Setor Semua: 100% uang fisik di laci disetor ke owner/toko
+    final finalDeposited = depositedCash ?? actualCash;
 
     state = state.copyWith(isLoading: true, errorMessage: () => null);
 
@@ -420,7 +421,7 @@ class ShiftNotifier extends Notifier<ShiftState> {
             'actualCash': actualCash,
             'expectedCash': expected,
             'difference': diff,
-            'depositedCash': depositedCash,
+            'depositedCash': finalDeposited,
           })
           .eq('id', current.id);
 

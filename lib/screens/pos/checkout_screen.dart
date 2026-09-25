@@ -12,6 +12,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/printer_provider.dart';
 import '../../providers/shift_provider.dart';
+import '../../providers/store_settings_provider.dart';
 import '../../services/checkout_service.dart';
 
 class CheckoutScreen extends ConsumerStatefulWidget {
@@ -34,7 +35,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     // Default isi uang tunai dengan nominal pas
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final cart = ref.read(cartProvider);
-      _cashController.text = cart.totalPrice.toStringAsFixed(0);
+      _cashController.text = cart.grandTotal.toStringAsFixed(0);
+      if (cart.customerName.trim().isNotEmpty) {
+        _customerNameController.text = cart.customerName.trim();
+      }
     });
   }
 
@@ -49,7 +53,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
   double get _changeAmount {
     final cart = ref.read(cartProvider);
-    return _cashReceived - cart.totalPrice;
+    return _cashReceived - cart.grandTotal;
   }
 
   String _formatCurrency(double amount) {
@@ -78,7 +82,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       return;
     }
 
-    if (_paymentMethod == 'CASH' && _cashReceived < cart.totalPrice) {
+    if (_paymentMethod == 'CASH' && _cashReceived < cart.grandTotal) {
       AppToast.showError(
         context,
         'Uang tunai yang diterima kurang dari total pembayaran.',
@@ -116,6 +120,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             createdOrder,
             storeName: auth.storeName.isNotEmpty ? auth.storeName : 'SCHAW CAFE',
             cashierName: auth.userName,
+            settings: ref.read(storeSettingsProvider).settings,
           );
     }
 
@@ -208,6 +213,33 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             ),
 
             const SizedBox(height: 14),
+            if (order.promotionDiscount > 0) ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Subtotal', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                  Text(
+                    NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(order.productSubtotal),
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    order.promoCodeSnapshot != null ? 'Diskon Promo (${order.promoCodeSnapshot})' : 'Diskon Promo',
+                    style: const TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w600),
+                  ),
+                  Text(
+                    '-${NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(order.promotionDiscount)}',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primary),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+            ],
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -344,6 +376,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                               order,
                               storeName: auth.storeName.isNotEmpty ? auth.storeName : 'SCHAW CAFE',
                               cashierName: auth.userName,
+                              settings: ref.read(storeSettingsProvider).settings,
                             );
                         if (!mounted) return;
                         if (success) {
@@ -463,8 +496,45 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                           ],
                         ),
                         const SizedBox(height: 8),
+                        if (cart.hasPromoApplied) ...[
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Subtotal', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                              Text(cart.formattedSubtotal, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  const Text('Diskon Promo', style: TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w600)),
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primaryContainer,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      cart.appliedPromo!.code,
+                                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.primaryDark),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Text(
+                                '-${cart.formattedPromotionDiscount}',
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primary),
+                              ),
+                            ],
+                          ),
+                          const Divider(height: 16),
+                        ],
                         Text(
-                          cart.formattedTotalPrice,
+                          cart.formattedGrandTotal,
                           style: const TextStyle(
                             fontSize: 28,
                             fontWeight: FontWeight.w900,
@@ -671,7 +741,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                                 label: const Text('Uang Pas'),
                                 onPressed: () {
                                   setState(() {
-                                    _cashController.text = cart.totalPrice.toStringAsFixed(0);
+                                    _cashController.text = cart.grandTotal.toStringAsFixed(0);
                                   });
                                 },
                               ),
@@ -742,7 +812,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                                         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                                       ),
                                       Text(
-                                        'Pastikan pelanggan telah melakukan transfer sebesar ${cart.formattedTotalPrice}.',
+                                        'Pastikan pelanggan telah melakukan transfer sebesar ${cart.formattedGrandTotal}.',
                                         style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
                                       ),
                                     ],
@@ -789,7 +859,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                           )
                         : Text(
-                            'Selesaikan Pembayaran • ${cart.formattedTotalPrice}',
+                            'Selesaikan Pembayaran • ${cart.formattedGrandTotal}',
                             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                           ),
                   ),

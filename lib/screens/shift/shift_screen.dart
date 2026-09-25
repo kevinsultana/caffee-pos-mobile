@@ -137,12 +137,14 @@ class _ShiftScreenState extends ConsumerState<ShiftScreen> {
   // ─────────────────────────────────────────────
   // DIALOG: TUTUP SHIFT (komprehensif dengan rekapan)
   // ─────────────────────────────────────────────
+  // ─────────────────────────────────────────────
+  // DIALOG: TUTUP SHIFT (Alur Setor Semua 100%)
+  // ─────────────────────────────────────────────
   Future<void> _showCloseShiftDialog(ShiftModel shift) async {
     final summary = ref.read(shiftProvider).summary;
     final actualCashController = TextEditingController(
       text: summary.expectedCash.toStringAsFixed(0),
     );
-    final depositedCashController = TextEditingController(text: '0');
     final formKey = GlobalKey<FormState>();
 
     await showDialog<void>(
@@ -155,6 +157,7 @@ class _ShiftScreenState extends ConsumerState<ShiftScreen> {
             double currentActual = double.tryParse(actualCashController.text) ?? 0.0;
             double difference = currentActual - summary.expectedCash;
             bool isShortfall = difference < 0;
+            bool isExact = difference == 0;
 
             return AlertDialog(
               scrollable: true,
@@ -172,7 +175,7 @@ class _ShiftScreenState extends ConsumerState<ShiftScreen> {
                   const SizedBox(width: 12),
                   const Expanded(
                     child: Text(
-                      'Tutup Shift',
+                      'Tutup Shift Kasir',
                       style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -190,60 +193,51 @@ class _ShiftScreenState extends ConsumerState<ShiftScreen> {
                       _buildSectionLabel('Rekapan Shift'),
                       const SizedBox(height: 8),
                       _buildSummaryCard(summary, shift),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 18),
 
                       // ── INPUT UANG FISIK AKTUAL ───────────────────
-                      _buildSectionLabel('Hitung Uang Fisik di Laci'),
-                      const SizedBox(height: 8),
+                      _buildSectionLabel('Hitung Uang Fisik di Laci Kasir'),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Hitung seluruh uang tunai yang ada di laci saat ini:',
+                        style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                      ),
+                      const SizedBox(height: 10),
                       TextFormField(
                         controller: actualCashController,
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                        textInputAction: TextInputAction.next,
-                        onChanged: (_) => setDialogState(() {}),
-                        decoration: const InputDecoration(
-                          labelText: 'Uang Fisik Aktual (Rp)',
-                          prefixText: 'Rp ',
-                          hintText: '0',
-                        ),
-                        validator: (val) {
-                          if (val == null || val.trim().isEmpty) return 'Wajib diisi';
-                          if ((double.tryParse(val) ?? -1) < 0) return 'Nominal tidak valid';
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-
-                      // ── INPUT DISETOR KE OWNER ─────────────────────
-                      TextFormField(
-                        controller: depositedCashController,
+                        autofocus: true,
                         keyboardType: TextInputType.number,
                         inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                         textInputAction: TextInputAction.done,
+                        onChanged: (_) => setDialogState(() {}),
                         decoration: const InputDecoration(
-                          labelText: 'Uang Disetor ke Owner (Rp)',
+                          labelText: 'Total Uang Fisik di Laci (Rp)',
                           prefixText: 'Rp ',
                           hintText: '0',
                         ),
                         validator: (val) {
-                          if (val == null || val.trim().isEmpty) return null; // opsional
+                          if (val == null || val.trim().isEmpty) return 'Uang fisik wajib diisi';
                           if ((double.tryParse(val) ?? -1) < 0) return 'Nominal tidak valid';
                           return null;
                         },
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 14),
 
                       // ── SELISIH REALTIME ──────────────────────────
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                         decoration: BoxDecoration(
-                          color: isShortfall ? AppColors.roseLight : AppColors.primaryContainer,
+                          color: isExact
+                              ? AppColors.primaryContainer
+                              : (isShortfall ? AppColors.roseLight : AppColors.amber.withValues(alpha: 0.12)),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: isShortfall
-                                ? AppColors.rose.withValues(alpha: 0.3)
-                                : AppColors.primary.withValues(alpha: 0.3),
+                            color: isExact
+                                ? AppColors.primary.withValues(alpha: 0.3)
+                                : (isShortfall
+                                    ? AppColors.rose.withValues(alpha: 0.3)
+                                    : AppColors.amber.withValues(alpha: 0.4)),
                           ),
                         ),
                         child: Row(
@@ -252,28 +246,62 @@ class _ShiftScreenState extends ConsumerState<ShiftScreen> {
                             Row(
                               children: [
                                 Icon(
-                                  isShortfall ? Icons.trending_down_rounded : Icons.trending_up_rounded,
+                                  isExact
+                                      ? Icons.check_circle_rounded
+                                      : (isShortfall ? Icons.trending_down_rounded : Icons.trending_up_rounded),
                                   size: 18,
-                                  color: isShortfall ? AppColors.rose : AppColors.primary,
+                                  color: isExact
+                                      ? AppColors.primary
+                                      : (isShortfall ? AppColors.rose : Colors.amber.shade900),
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  isShortfall ? 'Kekurangan' : 'Kelebihan',
+                                  isExact
+                                      ? 'Selisih Pas (Sesuai)'
+                                      : (isShortfall ? 'Kekurangan Kas' : 'Kelebihan Kas'),
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w600,
-                                    color: isShortfall ? AppColors.rose : AppColors.primaryDark,
+                                    color: isExact
+                                        ? AppColors.primaryDark
+                                        : (isShortfall ? AppColors.rose : Colors.amber.shade900),
                                   ),
                                 ),
                               ],
                             ),
                             Text(
-                              _currencyFmt.format(difference.abs()),
+                              isExact ? 'Rp 0' : '${isShortfall ? "− " : "+ "}${_currencyFmt.format(difference.abs())}',
                               style: TextStyle(
-                                fontSize: 15,
+                                fontSize: 14,
                                 fontWeight: FontWeight.w900,
-                                color: isShortfall ? AppColors.rose : AppColors.primary,
+                                color: isExact
+                                    ? AppColors.primary
+                                    : (isShortfall ? AppColors.rose : Colors.amber.shade900),
                                 fontFamily: 'monospace',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+
+                      // ── NOTICE SETOR SEMUA ────────────────────────
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceMuted,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.info_outline_rounded, size: 18, color: AppColors.textSecondary),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Alur Setor Semua: 100% uang fisik aktual (${_currencyFmt.format(currentActual)}) akan dicatat disetor penuh ke Owner/Sistem. Saldo sisa kasir di laci diatur ke Rp 0.',
+                                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, height: 1.4),
                               ),
                             ),
                           ],
@@ -298,21 +326,24 @@ class _ShiftScreenState extends ConsumerState<ShiftScreen> {
                     Navigator.pop(ctx);
 
                     final actualCash = double.tryParse(actualCashController.text) ?? 0.0;
-                    final depositedCash = double.tryParse(depositedCashController.text) ?? 0.0;
 
                     final error = await ref.read(shiftProvider.notifier).closeShift(
                           actualCash: actualCash,
-                          depositedCash: depositedCash,
+                          depositedCash: actualCash,
                         );
 
                     if (!mounted) return;
                     if (error != null) {
                       AppToast.showError(context, error);
                     } else {
-                      AppToast.showSuccess(context, 'Shift berhasil ditutup. Terima kasih!');
+                      AppToast.showSuccess(
+                        context,
+                        'Shift berhasil ditutup & uang fisik disetor penuh. Terima kasih!',
+                        duration: const Duration(seconds: 3),
+                      );
                     }
                   },
-                  child: const Text('Tutup Shift Sekarang'),
+                  child: const Text('Tutup Shift & Setor Semua'),
                 ),
               ],
             );
@@ -336,91 +367,135 @@ class _ShiftScreenState extends ConsumerState<ShiftScreen> {
     final icon = isCashIn ? Icons.add_circle_outline_rounded : Icons.remove_circle_outline_rounded;
     final label = isCashIn ? 'Kas Masuk' : 'Kas Keluar';
 
+    String selectedCategory = CashOutCategory.bahanBakuDarurat;
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) {
-        return AlertDialog(
-          scrollable: true,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: lightColor, borderRadius: BorderRadius.circular(10)),
-                child: Icon(icon, color: color, size: 22),
+        return StatefulBuilder(
+          builder: (dialogCtx, setDialogState) {
+            return AlertDialog(
+              scrollable: true,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: lightColor, borderRadius: BorderRadius.circular(10)),
+                    child: Icon(icon, color: color, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(label, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                ],
               ),
-              const SizedBox(width: 12),
-              Text(label, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          content: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  isCashIn
-                      ? 'Catat uang tunai yang masuk ke laci kasir di luar transaksi penjualan.'
-                      : 'Catat uang tunai yang keluar dari laci kasir (misal: beli bahan baku).',
-                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: nominalController,
-                  autofocus: true,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  textInputAction: TextInputAction.next,
-                  decoration: InputDecoration(
-                    labelText: 'Nominal (Rp)',
-                    prefixText: 'Rp ',
-                    hintText: '50000',
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: color, width: 2),
+              content: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isCashIn
+                          ? 'Catat uang tunai yang masuk ke laci kasir di luar transaksi penjualan.'
+                          : 'Catat pengeluaran uang tunai dari laci kasir dengan kategori dan alasan yang jelas.',
+                      style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
                     ),
-                  ),
-                  validator: (val) {
-                    if (val == null || val.trim().isEmpty) return 'Nominal wajib diisi';
-                    final amount = double.tryParse(val);
-                    if (amount == null || amount <= 0) return 'Masukkan nominal lebih dari 0';
-                    return null;
-                  },
+                    const SizedBox(height: 16),
+
+                    // Kategori Kas Keluar (hanya jika Cash Out)
+                    if (!isCashIn) ...[
+                      const Text(
+                        'Kategori Pengeluaran Kasir:',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        initialValue: selectedCategory,
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(Icons.category_rounded, size: 20),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: color, width: 2),
+                          ),
+                        ),
+                        items: CashOutCategory.options.map((opt) {
+                          return DropdownMenuItem<String>(
+                            value: opt['code'],
+                            child: Text(
+                              opt['title']!,
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          if (val != null) {
+                            setDialogState(() => selectedCategory = val);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+
+                    TextFormField(
+                      controller: nominalController,
+                      autofocus: isCashIn,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      textInputAction: TextInputAction.next,
+                      decoration: InputDecoration(
+                        labelText: 'Nominal (Rp)',
+                        prefixText: 'Rp ',
+                        hintText: '50000',
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: color, width: 2),
+                        ),
+                      ),
+                      validator: (val) {
+                        if (val == null || val.trim().isEmpty) return 'Nominal wajib diisi';
+                        final amount = double.tryParse(val);
+                        if (amount == null || amount <= 0) return 'Masukkan nominal lebih dari 0';
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: reasonController,
+                      keyboardType: TextInputType.text,
+                      textInputAction: TextInputAction.done,
+                      textCapitalization: TextCapitalization.sentences,
+                      maxLength: 100,
+                      decoration: InputDecoration(
+                        labelText: isCashIn ? 'Keterangan' : 'Catatan / Alasan (Wajib)',
+                        hintText: isCashIn ? 'Contoh: Titipan kasir, Modal tambahan' : 'Contoh: Beli es batu 2 bal, Plastik sampah',
+                        counterText: '',
+                      ),
+                      validator: (val) {
+                        if (val == null || val.trim().isEmpty) {
+                          return isCashIn ? 'Keterangan wajib diisi' : 'Alasan pengeluaran wajib diisi';
+                        }
+                        return null;
+                      },
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: reasonController,
-                  keyboardType: TextInputType.text,
-                  textInputAction: TextInputAction.done,
-                  textCapitalization: TextCapitalization.sentences,
-                  maxLength: 100,
-                  decoration: const InputDecoration(
-                    labelText: 'Keterangan',
-                    hintText: 'Contoh: Beli es batu, Titipan, dll.',
-                    counterText: '',
-                  ),
-                  validator: (val) {
-                    if (val == null || val.trim().isEmpty) return 'Keterangan wajib diisi';
-                    return null;
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Batal'),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: color, foregroundColor: Colors.white),
+                  onPressed: () {
+                    if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
                   },
+                  child: Text('Simpan $label'),
                 ),
               ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Batal'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: color, foregroundColor: Colors.white),
-              onPressed: () {
-                if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
-              },
-              child: Text('Simpan $label'),
-            ),
-          ],
+            );
+          },
         );
       },
     );
@@ -434,6 +509,7 @@ class _ShiftScreenState extends ConsumerState<ShiftScreen> {
           type: type.value,
           amount: amount,
           reason: reason,
+          category: isCashIn ? null : selectedCategory,
         );
 
     if (!mounted) return;
@@ -1024,11 +1100,36 @@ class _ShiftScreenState extends ConsumerState<ShiftScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  m.reason,
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                Row(
+                  children: [
+                    if (!isCashIn && m.category != null) ...[
+                      Container(
+                        margin: const EdgeInsets.only(right: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: AppColors.roseLight,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: AppColors.rose.withValues(alpha: 0.3)),
+                        ),
+                        child: Text(
+                          m.categoryLabel,
+                          style: const TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.rose,
+                          ),
+                        ),
+                      ),
+                    ],
+                    Expanded(
+                      child: Text(
+                        m.reason,
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
                 Text(
                   m.formattedTime,
@@ -1037,6 +1138,7 @@ class _ShiftScreenState extends ConsumerState<ShiftScreen> {
               ],
             ),
           ),
+          const SizedBox(width: 8),
           Text(
             '${isCashIn ? "+" : "−"} ${m.formattedAmount}',
             style: TextStyle(

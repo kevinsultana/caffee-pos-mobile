@@ -70,7 +70,9 @@ class MainLayout extends ConsumerWidget {
             tooltip: 'Opsi Akun',
             icon: const Icon(Icons.more_vert_rounded),
             onSelected: (value) async {
-              if (value == 'logout') {
+              if (value == 'account') {
+                context.push('/account');
+              } else if (value == 'logout') {
                 final confirm = await showDialog<bool>(
                   context: context,
                   builder: (ctx) => AlertDialog(
@@ -99,6 +101,17 @@ class MainLayout extends ConsumerWidget {
               }
             },
             itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'account',
+                child: Row(
+                  children: [
+                    Icon(Icons.person_outline_rounded, color: AppColors.textPrimary, size: 20),
+                    SizedBox(width: 8),
+                    Text('Pengaturan Akun', style: TextStyle(color: AppColors.textPrimary)),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
               const PopupMenuItem(
                 value: 'logout',
                 child: Row(

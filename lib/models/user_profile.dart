@@ -13,6 +13,7 @@ class UserProfile {
   final String roleName; // OWNER, MANAGER, CASHIER, dll
   final String storeName;
   final String storeCode;
+  final bool mustChangePassword;
 
   const UserProfile({
     required this.dbUserId,
@@ -26,6 +27,7 @@ class UserProfile {
     this.roleName = 'CASHIER',
     this.storeName = 'Schaw Cafe',
     this.storeCode = 'MAIN',
+    this.mustChangePassword = false,
   });
 
   bool get isActive => status == 'ACTIVE';
@@ -52,6 +54,10 @@ class UserProfile {
       storeCode = storeData['code']?.toString() ?? 'MAIN';
     }
 
+    final mustChange = map['mustChangePassword'] == true ||
+        map['mustChangePassword'] == 1 ||
+        map['mustChangePassword']?.toString().toLowerCase() == 'true';
+
     return UserProfile(
       dbUserId: map['id']?.toString() ?? '',
       authUserId: authUserId,
@@ -64,6 +70,7 @@ class UserProfile {
       roleName: roleName,
       storeName: storeName,
       storeCode: storeCode,
+      mustChangePassword: mustChange,
     );
   }
 
@@ -80,6 +87,37 @@ class UserProfile {
       'roleName': roleName,
       'storeName': storeName,
       'storeCode': storeCode,
+      'mustChangePassword': mustChangePassword,
     };
+  }
+
+  UserProfile copyWith({
+    String? dbUserId,
+    String? authUserId,
+    String? storeId,
+    String? roleId,
+    String? username,
+    String? email,
+    String? name,
+    String? status,
+    String? roleName,
+    String? storeName,
+    String? storeCode,
+    bool? mustChangePassword,
+  }) {
+    return UserProfile(
+      dbUserId: dbUserId ?? this.dbUserId,
+      authUserId: authUserId ?? this.authUserId,
+      storeId: storeId ?? this.storeId,
+      roleId: roleId ?? this.roleId,
+      username: username ?? this.username,
+      email: email ?? this.email,
+      name: name ?? this.name,
+      status: status ?? this.status,
+      roleName: roleName ?? this.roleName,
+      storeName: storeName ?? this.storeName,
+      storeCode: storeCode ?? this.storeCode,
+      mustChangePassword: mustChangePassword ?? this.mustChangePassword,
+    );
   }
 }

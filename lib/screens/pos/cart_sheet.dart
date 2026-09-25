@@ -7,7 +7,11 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/utils/app_toast.dart';
 import '../../models/cart_item_model.dart';
+import '../../models/customer_model.dart';
 import '../../providers/cart_provider.dart';
+import '../../providers/customer_provider.dart';
+import '../../providers/promotion_provider.dart';
+import 'promo_sheet.dart';
 
 class CartSheet extends ConsumerStatefulWidget {
   const CartSheet({super.key});
@@ -75,6 +79,180 @@ class _CartSheetState extends ConsumerState<CartSheet> {
           ),
         ],
       ),
+    );
+  }
+
+  void _showMemberSelectorModal(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return Consumer(
+          builder: (modalCtx, modalRef, child) {
+            final customerState = modalRef.watch(customerProvider);
+            return _MemberSelectorSheetContent(
+              customers: customerState.customers,
+              isLoading: customerState.isLoading,
+              selectedCustomerId: ref.read(cartProvider).customerId,
+              onSelectGuest: () {
+                ref.read(cartProvider.notifier).setCustomer(null);
+                Navigator.pop(ctx);
+                AppToast.showInfo(context, 'Beralih ke mode Guest (Bukan Member)');
+              },
+              onSelectCustomer: (customer) {
+                ref.read(cartProvider.notifier).setCustomer(customer);
+                Navigator.pop(ctx);
+                AppToast.showSuccess(context, 'Member "${customer.name}" teridentifikasi!');
+              },
+              onCreateNew: () {
+                Navigator.pop(ctx);
+                _showCreateCustomerDialog(context);
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showCreateCustomerDialog(
+    BuildContext context, {
+    String? initialName,
+    String? initialPhone,
+  }) {
+    final nameController = TextEditingController(text: initialName ?? '');
+    final phoneController = TextEditingController(text: initialPhone ?? '');
+    final emailController = TextEditingController();
+    bool isSaving = false;
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              titlePadding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+              actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryContainer,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.person_add_rounded, color: AppColors.primary, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text('Daftar Member Baru', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: nameController,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: InputDecoration(
+                        labelText: 'Nama Lengkap *',
+                        hintText: 'Contoh: Budi Santoso',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: phoneController,
+                      keyboardType: TextInputType.phone,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      decoration: InputDecoration(
+                        labelText: 'Nomor Telepon / WhatsApp',
+                        hintText: '08xxxxxxxxxx',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: InputDecoration(
+                        labelText: 'Email (Opsional)',
+                        hintText: 'budi@example.com',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSaving ? null : () => Navigator.pop(ctx),
+                  child: const Text('Batal'),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          final name = nameController.text.trim();
+                          if (name.isEmpty) {
+                            AppToast.showError(context, 'Nama lengkap wajib diisi');
+                            return;
+                          }
+
+                          setDialogState(() => isSaving = true);
+                          try {
+                            final newCustomer = await ref
+                                .read(customerProvider.notifier)
+                                .createCustomer(
+                                  name: name,
+                                  phone: phoneController.text.trim().isEmpty ? null : phoneController.text.trim(),
+                                  email: emailController.text.trim().isEmpty ? null : emailController.text.trim(),
+                                );
+
+                            // Otomatis pasang member baru ke keranjang
+                            ref.read(cartProvider.notifier).setCustomer(newCustomer);
+
+                            if (ctx.mounted) Navigator.pop(ctx);
+                            if (context.mounted) {
+                              HapticFeedback.lightImpact();
+                              AppToast.showSuccess(context, 'Member baru "${newCustomer.name}" berhasil didaftarkan!');
+                            }
+                          } catch (e) {
+                            setDialogState(() => isSaving = false);
+                            if (context.mounted) {
+                              AppToast.showError(context, 'Gagal mendaftarkan member: ${e.toString()}');
+                            }
+                          }
+                        },
+                  child: isSaving
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text('Simpan & Pilih Member'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -470,6 +648,254 @@ class _CartSheetState extends ConsumerState<CartSheet> {
                   ),
                 ),
 
+                // 1.5. Informasi Member & Identifikasi Pelanggan
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              const Text(
+                                'PELANGGAN / MEMBER',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.textSecondary,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              if (cart.isMemberVerified) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primaryLight,
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.check_circle_rounded, size: 10, color: AppColors.primaryDark),
+                                      SizedBox(width: 3),
+                                      Text(
+                                        'Member Terverifikasi',
+                                        style: TextStyle(
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w800,
+                                          color: AppColors.primaryDark,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          InkWell(
+                            onTap: () => _showCreateCustomerDialog(context),
+                            borderRadius: BorderRadius.circular(6),
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.person_add_rounded, size: 13, color: AppColors.primary),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    '+ Member Baru',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.primary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      // Tampilan Member yang dipilih atau tombol pilih member
+                      if (cart.isMemberVerified)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryContainer,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.primaryLight),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 34,
+                                height: 34,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+                                ),
+                                child: const Icon(Icons.stars_rounded, color: AppColors.primary, size: 20),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      cart.customerName,
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppColors.textPrimary,
+                                      ),
+                                    ),
+                                    if (cart.customerPhone != null && cart.customerPhone!.isNotEmpty)
+                                      Text(
+                                        cart.customerPhone!,
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: AppColors.textSecondary,
+                                          fontFamily: 'monospace',
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  side: BorderSide(color: AppColors.error.withValues(alpha: 0.5)),
+                                  foregroundColor: AppColors.error,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                                onPressed: () {
+                                  ref.read(cartProvider.notifier).setCustomer(null);
+                                  AppToast.showInfo(context, 'Beralih ke mode Guest (Bukan Member)');
+                                },
+                                child: const Text('Ganti / Hapus', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        InkWell(
+                          onTap: () => _showMemberSelectorModal(context),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceMuted,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: AppColors.border),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.person_outline_rounded, size: 20, color: AppColors.textSecondary),
+                                SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Guest (Bukan Member)',
+                                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                                      ),
+                                      Text(
+                                        'Pilih member terdaftar untuk akumulasi poin & promo',
+                                        style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Icon(Icons.unfold_more_rounded, size: 18, color: AppColors.textMuted),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                      // ── BANNER PERINGATAN MEMBER BARU DARI QR ──
+                      if (cart.unregisteredQrPhone != null && !cart.isMemberVerified) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.amberLight,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: AppColors.amber.withValues(alpha: 0.4)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('💡', style: TextStyle(fontSize: 14)),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: RichText(
+                                      text: TextSpan(
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: AppColors.textPrimary,
+                                          height: 1.4,
+                                        ),
+                                        children: [
+                                          const TextSpan(text: 'Nomor HP '),
+                                          TextSpan(
+                                            text: cart.unregisteredQrPhone,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                              fontFamily: 'monospace',
+                                            ),
+                                          ),
+                                          const TextSpan(
+                                            text: ' belum terdaftar sebagai member. Tawarkan pendaftaran member kepada pelanggan.',
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              SizedBox(
+                                height: 32,
+                                child: ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primary,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                    elevation: 0,
+                                  ),
+                                  onPressed: () {
+                                    _showCreateCustomerDialog(
+                                      context,
+                                      initialName: cart.customerName != 'Pelanggan' ? cart.customerName : '',
+                                      initialPhone: cart.unregisteredQrPhone,
+                                    );
+                                  },
+                                  icon: const Icon(Icons.add_rounded, size: 16),
+                                  label: const Text(
+                                    'Daftarkan sebagai Member',
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+
                 // 2. Input Nomor Antrean (Wajib) & Nama Pelanggan
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
@@ -590,35 +1016,69 @@ class _CartSheetState extends ConsumerState<CartSheet> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              'Nama Pelanggan / Meja',
-                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textSecondary),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  'Nama Pelanggan / Meja',
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textSecondary),
+                                ),
+                                if (cart.isMemberVerified)
+                                  const Text(
+                                    'Terkunci (Member)',
+                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.primaryDark),
+                                  ),
+                              ],
                             ),
                             const SizedBox(height: 4),
                             Container(
                               height: 42,
                               decoration: BoxDecoration(
-                                color: AppColors.surfaceMuted,
+                                color: cart.isMemberVerified ? AppColors.primaryContainer : AppColors.surfaceMuted,
                                 borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: AppColors.border),
-                              ),
-                              child: TextField(
-                                controller: _customerController,
-                                textInputAction: TextInputAction.done,
-                                onSubmitted: (_) => FocusScope.of(context).unfocus(),
-                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                                decoration: const InputDecoration(
-                                  hintText: 'Pelanggan',
-                                  hintStyle: TextStyle(fontSize: 12, color: AppColors.textMuted),
-                                  border: InputBorder.none,
-                                  prefixIcon: Icon(Icons.person_outline_rounded, size: 16, color: AppColors.textMuted),
-                                  contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-                                  isDense: true,
+                                border: Border.all(
+                                  color: cart.isMemberVerified ? AppColors.primaryLight : AppColors.border,
                                 ),
-                                onChanged: (val) {
-                                  ref.read(cartProvider.notifier).setCustomerName(val);
-                                },
                               ),
+                              child: cart.isMemberVerified
+                                  ? Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                                      child: Row(
+                                        children: [
+                                          const Icon(Icons.lock_rounded, size: 15, color: AppColors.primary),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              cart.customerName,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w800,
+                                                color: AppColors.textPrimary,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    )
+                                  : TextField(
+                                      controller: _customerController,
+                                      textInputAction: TextInputAction.done,
+                                      onSubmitted: (_) => FocusScope.of(context).unfocus(),
+                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                      decoration: const InputDecoration(
+                                        hintText: 'Pelanggan',
+                                        hintStyle: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                                        border: InputBorder.none,
+                                        prefixIcon: Icon(Icons.person_outline_rounded, size: 16, color: AppColors.textMuted),
+                                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                                        isDense: true,
+                                      ),
+                                      onChanged: (val) {
+                                        ref.read(cartProvider.notifier).setCustomerName(val);
+                                      },
+                                    ),
                             ),
                           ],
                         ),
@@ -933,6 +1393,162 @@ class _CartSheetState extends ConsumerState<CartSheet> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        // ── TRIGGER KUPON / PROMO ──
+                        if (cart.appliedPromo != null)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryContainer,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: AppColors.primaryLight, width: 1.5),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.confirmation_number_rounded, color: AppColors.primaryDark, size: 20),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Text(
+                                            cart.appliedPromo!.code,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w900,
+                                              fontSize: 12,
+                                              fontFamily: 'monospace',
+                                              color: AppColors.primaryDark,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            '(-${cart.formattedPromotionDiscount})',
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.bold,
+                                              color: AppColors.primary,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      Text(
+                                        cart.appliedPromo!.name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: () => PromoSheet.show(context),
+                                  style: TextButton.styleFrom(
+                                    visualDensity: VisualDensity.compact,
+                                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                                  ),
+                                  child: const Text('Ganti', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.close_rounded, size: 18, color: AppColors.error),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  onPressed: () {
+                                    ref.read(cartProvider.notifier).removePromo();
+                                    AppToast.showInfo(context, 'Promo diskon dilepas');
+                                  },
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: InkWell(
+                              onTap: () => PromoSheet.show(context),
+                              borderRadius: BorderRadius.circular(12),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                                decoration: BoxDecoration(
+                                  color: AppColors.surfaceMuted,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: AppColors.border),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.local_offer_outlined, size: 18, color: AppColors.primary),
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      'Pilih Promo Diskon',
+                                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                                    ),
+                                    const Spacer(),
+                                    Consumer(
+                                      builder: (ctx, refCount, _) {
+                                        final count = refCount.watch(promotionProvider).promotions.length;
+                                        if (count > 0) {
+                                          return Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: AppColors.primaryContainer,
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              '$count Promo',
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold,
+                                                color: AppColors.primaryDark,
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                        return const SizedBox.shrink();
+                                      },
+                                    ),
+                                    const SizedBox(width: 4),
+                                    const Icon(Icons.chevron_right_rounded, size: 18, color: AppColors.textMuted),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+
+                        // Rincian Subtotal jika ada diskon promo
+                        if (cart.hasAppliedPromo) ...[
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Subtotal',
+                                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                              ),
+                              Text(
+                                cart.formattedTotalPrice,
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Diskon Promo (${cart.appliedPromo!.code})',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary),
+                              ),
+                              Text(
+                                '-${cart.formattedPromotionDiscount}',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          const Divider(height: 1, color: AppColors.borderLight),
+                          const SizedBox(height: 6),
+                        ],
+
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -945,7 +1561,7 @@ class _CartSheetState extends ConsumerState<CartSheet> {
                               ),
                             ),
                             Text(
-                              cart.formattedTotalPrice,
+                              cart.formattedGrandTotal,
                               style: const TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.w900,
@@ -991,6 +1607,234 @@ class _CartSheetState extends ConsumerState<CartSheet> {
               ],
             ),
           ),
+    );
+  }
+}
+
+class _MemberSelectorSheetContent extends StatefulWidget {
+  final List<CustomerModel> customers;
+  final bool isLoading;
+  final String? selectedCustomerId;
+  final VoidCallback onSelectGuest;
+  final ValueChanged<CustomerModel> onSelectCustomer;
+  final VoidCallback onCreateNew;
+
+  const _MemberSelectorSheetContent({
+    required this.customers,
+    required this.isLoading,
+    this.selectedCustomerId,
+    required this.onSelectGuest,
+    required this.onSelectCustomer,
+    required this.onCreateNew,
+  });
+
+  @override
+  State<_MemberSelectorSheetContent> createState() => _MemberSelectorSheetContentState();
+}
+
+class _MemberSelectorSheetContentState extends State<_MemberSelectorSheetContent> {
+  String _searchQuery = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = widget.customers.where((c) {
+      if (_searchQuery.trim().isEmpty) return true;
+      final q = _searchQuery.toLowerCase().trim();
+      final nameMatches = c.name.toLowerCase().contains(q);
+      final phoneMatches = c.phone?.toLowerCase().contains(q) ?? false;
+      final emailMatches = c.email?.toLowerCase().contains(q) ?? false;
+      return nameMatches || phoneMatches || emailMatches;
+    }).toList();
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.65,
+      minChildSize: 0.4,
+      maxChildSize: 0.9,
+      expand: false,
+      builder: (ctx, scrollController) {
+        return Column(
+          children: [
+            // Handle bar
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // Header
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  const Text(
+                    'Pilih Pelanggan / Member',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                  ),
+                  const Spacer(),
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.primary,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    ),
+                    onPressed: widget.onCreateNew,
+                    icon: const Icon(Icons.person_add_rounded, size: 16),
+                    label: const Text('+ Member Baru', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                  ),
+                ],
+              ),
+            ),
+
+            // Search Bar
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
+              child: TextField(
+                onChanged: (val) => setState(() => _searchQuery = val),
+                decoration: InputDecoration(
+                  hintText: 'Cari nama, nomor HP, atau email...',
+                  hintStyle: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                  prefixIcon: const Icon(Icons.search_rounded, size: 20, color: AppColors.textMuted),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: AppColors.border),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: AppColors.border),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  isDense: true,
+                ),
+                style: const TextStyle(fontSize: 13),
+              ),
+            ),
+
+            const Divider(height: 1),
+
+            // List of Options
+            Expanded(
+              child: widget.isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : ListView(
+                      controller: scrollController,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      children: [
+                        // Option: Guest
+                        ListTile(
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          leading: Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceMuted,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(Icons.person_off_rounded, size: 20, color: AppColors.textSecondary),
+                          ),
+                          title: const Text(
+                            'Guest (Bukan Member)',
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                          ),
+                          subtitle: const Text(
+                            'Transaksi kasir biasa tanpa poin loyalitas',
+                            style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                          ),
+                          trailing: widget.selectedCustomerId == null
+                              ? const Icon(Icons.check_circle_rounded, color: AppColors.primary, size: 20)
+                              : null,
+                          onTap: widget.onSelectGuest,
+                        ),
+
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 4),
+                          child: Divider(height: 1, color: AppColors.borderLight),
+                        ),
+
+                        if (filtered.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              children: [
+                                const Icon(Icons.search_off_rounded, size: 36, color: AppColors.textMuted),
+                                const SizedBox(height: 8),
+                                Text(
+                                  _searchQuery.isNotEmpty
+                                      ? 'Member "$_searchQuery" tidak ditemukan'
+                                      : 'Belum ada data member terdaftar',
+                                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                                ),
+                                if (_searchQuery.isNotEmpty) ...[
+                                  const SizedBox(height: 12),
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppColors.primary,
+                                      foregroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                    ),
+                                    onPressed: widget.onCreateNew,
+                                    icon: const Icon(Icons.add, size: 16),
+                                    label: Text(
+                                      'Daftarkan "$_searchQuery"',
+                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          )
+                        else
+                          ...filtered.map((customer) {
+                            final isSelected = widget.selectedCustomerId == customer.id;
+                            return ListTile(
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              tileColor: isSelected ? AppColors.primaryContainer : null,
+                              leading: Container(
+                                width: 38,
+                                height: 38,
+                                decoration: BoxDecoration(
+                                  color: isSelected ? Colors.white : AppColors.primaryLight,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(
+                                  Icons.star_rounded,
+                                  size: 22,
+                                  color: isSelected ? AppColors.primary : AppColors.primaryDark,
+                                ),
+                              ),
+                              title: Text(
+                                customer.name,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: isSelected ? AppColors.primaryDark : AppColors.textPrimary,
+                                ),
+                              ),
+                              subtitle: Text(
+                                customer.displaySubtitle.isNotEmpty
+                                    ? customer.displaySubtitle
+                                    : 'Member Terdaftar',
+                                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                              ),
+                              trailing: isSelected
+                                  ? const Icon(Icons.check_circle_rounded, color: AppColors.primary, size: 20)
+                                  : null,
+                              onTap: () => widget.onSelectCustomer(customer),
+                            );
+                          }),
+                      ],
+                    ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

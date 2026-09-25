@@ -9,6 +9,7 @@ import '../../models/order_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/printer_provider.dart';
 import '../../providers/shift_provider.dart';
+import '../../providers/store_settings_provider.dart';
 
 class HistoryScreen extends ConsumerStatefulWidget {
   const HistoryScreen({super.key});
@@ -331,6 +332,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                         ? auth.storeName
                                         : 'SCHAW CAFE',
                                     cashierName: auth.userName,
+                                    settings: ref.read(storeSettingsProvider).settings,
                                   );
 
                               if (!mounted) return;

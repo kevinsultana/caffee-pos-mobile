@@ -58,7 +58,7 @@ class AuthNotifier extends Notifier<AuthState> {
         final supaClient = supa.Supabase.instance.client;
         final userRecord = await supaClient
             .from('User')
-            .select('id, storeId, roleId, username, email, name, status, Role(name), Store(id, name, code)')
+            .select('id, storeId, roleId, username, email, name, status, mustChangePassword, Role(name), Store(id, name, code)')
             .eq('id', savedUserId)
             .maybeSingle();
 
@@ -101,11 +101,11 @@ class AuthNotifier extends Notifier<AuthState> {
       final query = cleanInput.contains('@')
           ? supaClient
               .from('User')
-              .select('id, storeId, roleId, username, email, name, status, passwordHash, Role(name), Store(id, name, code)')
+              .select('id, storeId, roleId, username, email, name, status, mustChangePassword, passwordHash, Role(name), Store(id, name, code)')
               .ilike('email', cleanInput)
           : supaClient
               .from('User')
-              .select('id, storeId, roleId, username, email, name, status, passwordHash, Role(name), Store(id, name, code)')
+              .select('id, storeId, roleId, username, email, name, status, mustChangePassword, passwordHash, Role(name), Store(id, name, code)')
               .ilike('username', cleanInput);
 
       final userRecord = await query.maybeSingle();
@@ -188,6 +188,154 @@ class AuthNotifier extends Notifier<AuthState> {
   Future<String?> signInWithEmailPassword(String usernameOrEmail, String password) =>
       signInWithUsernameOrEmail(usernameOrEmail, password);
 
+  /// Ganti password kasir / user login
+  Future<String?> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final profile = state.profile;
+    if (profile == null || profile.dbUserId.isEmpty) {
+      return 'Sesi tidak valid. Silakan login kembali.';
+    }
+
+    final cleanCurrent = currentPassword.trim();
+    final cleanNew = newPassword.trim();
+
+    if (cleanCurrent.isEmpty) {
+      return 'Kata sandi saat ini wajib diisi.';
+    }
+    if (cleanNew.length < 6) {
+      return 'Kata sandi baru minimal 6 karakter.';
+    }
+    if (cleanCurrent == cleanNew) {
+      return 'Kata sandi baru tidak boleh sama dengan kata sandi lama.';
+    }
+
+    state = state.copyWith(isLoading: true, errorMessage: () => null);
+
+    try {
+      final supaClient = supa.Supabase.instance.client;
+
+      // 1. Ambil passwordHash saat ini dari database
+      final userRecord = await supaClient
+          .from('User')
+          .select('id, passwordHash')
+          .eq('id', profile.dbUserId)
+          .maybeSingle();
+
+      if (userRecord == null) {
+        state = state.copyWith(isLoading: false);
+        return 'Akun tidak ditemukan di database.';
+      }
+
+      final existingHash = userRecord['passwordHash']?.toString() ?? '';
+      bool isMatch = false;
+      try {
+        isMatch = BCrypt.checkpw(cleanCurrent, existingHash);
+      } catch (e) {
+        debugPrint('BCrypt checkpw error: $e');
+      }
+
+      if (!isMatch) {
+        state = state.copyWith(isLoading: false);
+        return 'Kata sandi saat ini tidak cocok.';
+      }
+
+      // 2. Hash password baru dengan BCrypt (default 10 rounds)
+      final newPasswordHash = BCrypt.hashpw(cleanNew, BCrypt.gensalt());
+      final nowUtc = DateTime.now().toUtc().toIso8601String();
+
+      // 3. Update tabel User: passwordHash, mustChangePassword = false
+      await supaClient.from('User').update({
+        'passwordHash': newPasswordHash,
+        'mustChangePassword': false,
+        'updatedAt': nowUtc,
+      }).eq('id', profile.dbUserId);
+
+      // 4. Update sesi profil lokal
+      final updatedProfile = profile.copyWith(mustChangePassword: false);
+      state = state.copyWith(
+        profile: () => updatedProfile,
+        isLoading: false,
+        errorMessage: () => null,
+      );
+
+      return null;
+    } catch (e) {
+      debugPrint('Error changePassword: $e');
+      final err = 'Gagal mengubah kata sandi: ${e.toString()}';
+      state = state.copyWith(isLoading: false, errorMessage: () => err);
+      return err;
+    }
+  }
+
+  /// Update data profil pengguna (Nama dan Username)
+  Future<String?> updateProfile({
+    required String name,
+    required String username,
+  }) async {
+    final profile = state.profile;
+    if (profile == null || profile.dbUserId.isEmpty) {
+      return 'Sesi tidak valid. Silakan login kembali.';
+    }
+
+    final cleanName = name.trim();
+    final cleanUsername = username.trim().toLowerCase();
+
+    if (cleanName.isEmpty) {
+      return 'Nama lengkap tidak boleh kosong.';
+    }
+    if (cleanUsername.isEmpty) {
+      return 'Username tidak boleh kosong.';
+    }
+
+    state = state.copyWith(isLoading: true, errorMessage: () => null);
+
+    try {
+      final supaClient = supa.Supabase.instance.client;
+
+      // Cek apakah username sudah dipakai oleh user lain
+      if (cleanUsername != profile.username.toLowerCase()) {
+        final existing = await supaClient
+            .from('User')
+            .select('id')
+            .ilike('username', cleanUsername)
+            .neq('id', profile.dbUserId)
+            .maybeSingle();
+
+        if (existing != null) {
+          state = state.copyWith(isLoading: false);
+          return 'Username "$cleanUsername" sudah digunakan oleh pengguna lain.';
+        }
+      }
+
+      final nowUtc = DateTime.now().toUtc().toIso8601String();
+      await supaClient.from('User').update({
+        'name': cleanName,
+        'username': cleanUsername,
+        'updatedAt': nowUtc,
+      }).eq('id', profile.dbUserId);
+
+      final updatedProfile = profile.copyWith(
+        name: cleanName,
+        username: cleanUsername,
+      );
+
+      state = state.copyWith(
+        profile: () => updatedProfile,
+        isLoading: false,
+        errorMessage: () => null,
+      );
+
+      return null;
+    } catch (e) {
+      debugPrint('Error updateProfile: $e');
+      final err = 'Gagal memperbarui profil: ${e.toString()}';
+      state = state.copyWith(isLoading: false, errorMessage: () => err);
+      return err;
+    }
+  }
+
   /// Login instan mode Demo (mengambil akun kasir aktif pertama dari database jika tersedia)
   Future<String?> loginDemo([String username = 'owner']) async {
     state = state.copyWith(isLoading: true, errorMessage: () => null);
@@ -196,7 +344,7 @@ class AuthNotifier extends Notifier<AuthState> {
       final supaClient = supa.Supabase.instance.client;
       final response = await supaClient
           .from('User')
-          .select('id, storeId, roleId, username, email, name, status, Role(name), Store(id, name, code)')
+          .select('id, storeId, roleId, username, email, name, status, mustChangePassword, Role(name), Store(id, name, code)')
           .eq('status', 'ACTIVE')
           .limit(1)
           .maybeSingle();
@@ -229,6 +377,7 @@ class AuthNotifier extends Notifier<AuthState> {
       name: 'Kasir Demo ($username)',
       roleName: 'CASHIER',
       storeName: 'Schaw Cafe Demo',
+      mustChangePassword: false,
     );
 
     state = state.copyWith(

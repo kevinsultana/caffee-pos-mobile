@@ -240,26 +240,30 @@ class _ToastWidgetState extends State<_ToastWidget>
         mediaQuery.padding.top > 0 ? mediaQuery.padding.top : 24.0;
 
     return Positioned(
-      top: topPadding + 8,
+      top: topPadding + 10,
       left: 16,
       right: 16,
-      child: FadeTransition(
-        opacity: _fadeAnimation,
-        child: SlideTransition(
-          position: _slideAnimation,
-          child: Material(
-            color: Colors.transparent,
-            child: GestureDetector(
-              onTap: dismiss,
-              onVerticalDragUpdate: (details) {
-                if (details.primaryDelta != null &&
-                    details.primaryDelta! < -4) {
-                  dismiss();
-                }
-              },
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440),
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: SlideTransition(
+              position: _slideAnimation,
+              child: Material(
+                color: Colors.transparent,
+                child: GestureDetector(
+                  onTap: dismiss,
+                  onVerticalDragUpdate: (details) {
+                    if (details.primaryDelta != null &&
+                        details.primaryDelta! < -4) {
+                      dismiss();
+                    }
+                  },
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
                   color: const Color(0xFF0F172A), // Dark slate premium
                   borderRadius: BorderRadius.circular(16),
@@ -322,6 +326,8 @@ class _ToastWidgetState extends State<_ToastWidget>
           ),
         ),
       ),
-    );
+    ),
+  ),
+);
   }
 }

@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../providers/auth_provider.dart';
+import '../../screens/account/account_screen.dart';
+import '../../screens/auth/change_password_screen.dart';
 import '../../screens/auth/login_screen.dart';
 import '../../screens/history/history_screen.dart';
 import '../../screens/main_layout.dart';
@@ -35,13 +37,29 @@ final routerProvider = Provider<GoRouter>((ref) {
     refreshListenable: routerNotifier,
     redirect: (context, state) {
       final isAuthenticated = authState.isAuthenticated;
+      final mustChangePassword = authState.profile?.mustChangePassword ?? false;
       final isLoggingIn = state.matchedLocation == '/login';
+      final isChangingPassword = state.matchedLocation == '/change-password';
 
+      // 1. Belum login -> paksa ke /login
       if (!isAuthenticated && !isLoggingIn) {
         return '/login';
       }
-      if (isAuthenticated && isLoggingIn) {
-        return '/pos';
+
+      // 2. Sudah login
+      if (isAuthenticated) {
+        // Jika wajib ganti kata sandi -> paksa ke /change-password
+        if (mustChangePassword) {
+          if (!isChangingPassword) {
+            return '/change-password';
+          }
+          return null; // biarkan di /change-password
+        }
+
+        // Jika tidak perlu ganti password dan sedang di login / change-password -> arahkan ke /pos
+        if (isLoggingIn || isChangingPassword) {
+          return '/pos';
+        }
       }
       return null;
     },
@@ -49,6 +67,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/login',
         builder: (context, state) => const LoginScreen(),
+      ),
+      GoRoute(
+        path: '/change-password',
+        builder: (context, state) => const ChangePasswordScreen(),
+      ),
+      GoRoute(
+        path: '/account',
+        builder: (context, state) => const AccountScreen(),
       ),
       GoRoute(
         path: '/settings/printer',

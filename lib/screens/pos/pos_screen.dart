@@ -82,16 +82,31 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     }
   }
 
-  void _executeLoadQrOrder(OrderModel order, List<ProductModel> catalogProducts) {
-    ref.read(cartProvider.notifier).loadQrOrder(
+  Future<void> _executeLoadQrOrder(OrderModel order, List<ProductModel> catalogProducts) async {
+    await ref.read(cartProvider.notifier).loadQrOrder(
       order: order,
       catalogProducts: catalogProducts,
     );
 
-    AppToast.showSuccess(
-      context,
-      'Pesanan QR #${order.publicQrToken ?? order.orderNumber} dimuat ke keranjang',
-    );
+    if (!mounted) return;
+
+    final cart = ref.read(cartProvider);
+    if (cart.customerId != null) {
+      AppToast.showSuccess(
+        context,
+        'Pesanan QR dimuat! Member "${cart.customerName}" teridentifikasi.',
+      );
+    } else if (cart.unregisteredQrPhone != null) {
+      AppToast.showInfo(
+        context,
+        'Pesanan QR dimuat. Nomor HP ${cart.unregisteredQrPhone} belum terdaftar sebagai member.',
+      );
+    } else {
+      AppToast.showSuccess(
+        context,
+        'Pesanan QR #${order.publicQrToken ?? order.orderNumber} dimuat ke keranjang',
+      );
+    }
 
     // Beralih ke tab katalog menu dan langsung buka CartSheet
     setState(() {

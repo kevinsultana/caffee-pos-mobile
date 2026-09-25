@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 
 import '../models/order_model.dart';
+import '../models/store_settings_model.dart';
 
 class BluetoothPrinterService {
   /// Cek izin Bluetooth perangkat
@@ -60,7 +61,7 @@ class BluetoothPrinterService {
     }
   }
 
-  /// Helper untuk menyusun baris teks dengan rata kiri & kanan (panjang 32 karakter untuk printer 58mm)
+  /// Helper untuk menyusun baris teks dengan rata kiri & kanan sesuai lebar kolom (32 / 48)
   static String _formatRow(String left, String right, {int width = 32}) {
     final availableSpace = width - left.length - right.length;
     if (availableSpace <= 0) {
@@ -69,24 +70,30 @@ class BluetoothPrinterService {
     return '$left${' ' * availableSpace}$right\n';
   }
 
-  /// Cetak struk pesanan kasir menggunakan perintah standar ESC/POS
+  /// Cetak struk pesanan kasir menggunakan perintah standar ESC/POS dinamis sesuai StoreSettings
   static Future<bool> printReceipt(
     OrderModel order, {
     String storeName = 'SCHAW CAFE',
     String? cashierName,
+    StoreSettingsModel? settings,
   }) async {
     final connected = await isConnected();
     if (!connected) return false;
 
     final bytes = <int>[];
+    final cols = settings?.effectiveCols ?? 32;
+    final sep = '-' * cols;
+    final doubleSep = '=' * cols;
 
     // ── Command ESC/POS Dasar ─────────────────────────────────────────────
     const escInit = [27, 64]; // Reset printer
-    const alignCenter = [27, 97, 1]; // Rata tengah
     const alignLeft = [27, 97, 0]; // Rata kiri
+    const alignCenter = [27, 97, 1]; // Rata tengah
+    const alignRight = [27, 97, 2]; // Rata kanan
     const boldOn = [27, 69, 1]; // Tebal aktif
     const boldOff = [27, 69, 0]; // Tebal mati
-    const textDouble = [29, 33, 17]; // Ukuran teks 2x
+    const textDoubleBoth = [29, 33, 17]; // Ukuran teks 2x (lebar & tinggi)
+    const textDoubleHeight = [29, 33, 16]; // Double height
     const textNormal = [29, 33, 0]; // Ukuran teks normal
     const lineFeed = [10]; // Newline
 
@@ -99,17 +106,48 @@ class BluetoothPrinterService {
     // 1. Inisialisasi
     bytes.addAll(escInit);
 
-    // 2. Header Toko (Center & Bold)
-    bytes.addAll(alignCenter);
-    bytes.addAll(boldOn);
-    bytes.addAll(textDouble);
-    bytes.addAll(utf8.encode('$storeName\n'));
-    bytes.addAll(textNormal);
-    bytes.addAll(boldOff);
-    bytes.addAll(utf8.encode('Point of Sale & Coffee Bar\n'));
-    bytes.addAll(utf8.encode('================================\n'));
+    // Font Size (Font B jika SMALL)
+    if (settings?.receiptFontSize == 'SMALL') {
+      bytes.addAll([27, 77, 1]); // Font B
+    }
 
-    // 3. Info Transaksi (Rata Kiri)
+    // 2. Header Nama Toko (jika receiptShowStoreName true)
+    if (settings?.receiptShowStoreName ?? true) {
+      bytes.addAll(alignCenter);
+      bytes.addAll(boldOn);
+      if (settings?.receiptDoubleHeight ?? true) {
+        bytes.addAll(textDoubleBoth);
+      }
+      bytes.addAll(utf8.encode('$storeName\n'));
+      bytes.addAll(textNormal);
+      bytes.addAll(boldOff);
+    }
+
+    // 3. Teks Header Kustom (Align & Bold dinamis)
+    if (settings?.receiptHeader != null && settings!.receiptHeader!.trim().isNotEmpty) {
+      final headerAlign = settings.receiptHeaderAlign == 'LEFT'
+          ? alignLeft
+          : (settings.receiptHeaderAlign == 'RIGHT' ? alignRight : alignCenter);
+      bytes.addAll(headerAlign);
+      if (settings.receiptHeaderBold) bytes.addAll(boldOn);
+
+      final headerLines = settings.receiptHeader!.split('\n');
+      for (final line in headerLines) {
+        if (line.trim().isNotEmpty) {
+          bytes.addAll(utf8.encode('${line.trim()}\n'));
+        }
+      }
+
+      if (settings.receiptHeaderBold) bytes.addAll(boldOff);
+    } else {
+      bytes.addAll(alignCenter);
+      bytes.addAll(utf8.encode('Point of Sale & Coffee Bar\n'));
+    }
+
+    bytes.addAll(alignCenter);
+    bytes.addAll(utf8.encode('$doubleSep\n'));
+
+    // 4. Info Transaksi (Rata Kiri)
     bytes.addAll(alignLeft);
     bytes.addAll(utf8.encode('No. Order : ${order.orderNumber}\n'));
     if (order.queueNumber != null) {
@@ -128,13 +166,13 @@ class BluetoothPrinterService {
       );
     }
     bytes.addAll(utf8.encode('Pelanggan : ${order.customerNameSnapshot}\n'));
-    bytes.addAll(utf8.encode('--------------------------------\n'));
+    bytes.addAll(utf8.encode('$sep\n'));
 
-    // 4. Daftar Item Pesanan
+    // 5. Daftar Item Pesanan
     bytes.addAll(boldOn);
-    bytes.addAll(utf8.encode(_formatRow('MENU', 'TOTAL')));
+    bytes.addAll(utf8.encode(_formatRow('MENU', 'TOTAL', width: cols)));
     bytes.addAll(boldOff);
-    bytes.addAll(utf8.encode('--------------------------------\n'));
+    bytes.addAll(utf8.encode('$sep\n'));
 
     for (final item in order.items) {
       bytes.addAll(utf8.encode('${item.productNameSnapshot}\n'));
@@ -146,7 +184,7 @@ class BluetoothPrinterService {
           '${item.quantity} x ${currencyFmt.format(item.unitPrice)}';
       bytes.addAll(
         utf8.encode(
-          _formatRow('  $priceDetail', currencyFmt.format(item.subtotal)),
+          _formatRow('  $priceDetail', currencyFmt.format(item.subtotal), width: cols),
         ),
       );
 
@@ -155,30 +193,48 @@ class BluetoothPrinterService {
       }
     }
 
-    bytes.addAll(utf8.encode('--------------------------------\n'));
+    bytes.addAll(utf8.encode('$sep\n'));
 
-    // 5. Total Pembayaran
+    // 6. Total Pembayaran
     bytes.addAll(
       _formatRow(
         'Subtotal',
         currencyFmt.format(order.productSubtotal),
+        width: cols,
       ).codeUnits,
     );
+    if (order.promotionDiscount > 0) {
+      final promoLabel = (order.promoCodeSnapshot != null && order.promoCodeSnapshot!.isNotEmpty)
+          ? 'Diskon Promo (${order.promoCodeSnapshot})'
+          : 'Diskon Promo';
+      bytes.addAll(
+        _formatRow(
+          promoLabel,
+          '-${currencyFmt.format(order.promotionDiscount)}',
+          width: cols,
+        ).codeUnits,
+      );
+    }
     bytes.addAll(boldOn);
+    if (settings?.receiptDoubleHeight ?? true) {
+      bytes.addAll(textDoubleHeight);
+    }
     bytes.addAll(
-      _formatRow('TOTAL', currencyFmt.format(order.grandTotal)).codeUnits,
+      _formatRow('TOTAL', currencyFmt.format(order.grandTotal), width: cols).codeUnits,
     );
+    bytes.addAll(textNormal);
     bytes.addAll(boldOff);
 
-    // 6. Rincian Metode Bayar
+    // 7. Rincian Metode Bayar
     final payment = order.payment;
     if (payment != null) {
-      bytes.addAll(_formatRow('Metode Bayar', payment.method).codeUnits);
+      bytes.addAll(_formatRow('Metode Bayar', payment.method, width: cols).codeUnits);
       if (payment.method == 'CASH' && payment.cashReceived != null) {
         bytes.addAll(
           _formatRow(
             'Bayar Tunai',
             currencyFmt.format(payment.cashReceived!),
+            width: cols,
           ).codeUnits,
         );
         if (payment.changeAmount != null) {
@@ -186,18 +242,43 @@ class BluetoothPrinterService {
             _formatRow(
               'Kembalian',
               currencyFmt.format(payment.changeAmount!),
+              width: cols,
             ).codeUnits,
           );
         }
       }
     }
 
-    bytes.addAll(utf8.encode('================================\n'));
+    bytes.addAll(utf8.encode('$doubleSep\n'));
 
-    // 7. Footer Struk
-    bytes.addAll(alignCenter);
-    bytes.addAll(utf8.encode('Terima Kasih Atas Kunjungan Anda\n'));
-    bytes.addAll(utf8.encode('Silakan Berkunjung Kembali!\n'));
+    // 8. Footer Struk Kustom (Align & Bold dinamis)
+    final footerAlign = settings?.receiptFooterAlign == 'LEFT'
+        ? alignLeft
+        : (settings?.receiptFooterAlign == 'RIGHT' ? alignRight : alignCenter);
+    bytes.addAll(footerAlign);
+
+    if (settings?.receiptFooterBold ?? false) bytes.addAll(boldOn);
+
+    if (settings?.receiptFooter != null && settings!.receiptFooter!.trim().isNotEmpty) {
+      final footerLines = settings.receiptFooter!.split('\n');
+      for (final line in footerLines) {
+        if (line.trim().isNotEmpty) {
+          bytes.addAll(utf8.encode('${line.trim()}\n'));
+        }
+      }
+    } else {
+      bytes.addAll(utf8.encode('Terima Kasih Atas Kunjungan Anda\n'));
+      bytes.addAll(utf8.encode('Silakan Berkunjung Kembali!\n'));
+    }
+
+    if (settings?.receiptFooterBold ?? false) bytes.addAll(boldOff);
+
+    // Reset font ke normal jika tadi Font B
+    if (settings?.receiptFontSize == 'SMALL') {
+      bytes.addAll([27, 77, 0]);
+    }
+
+    bytes.addAll(alignLeft);
     bytes.addAll(lineFeed);
     bytes.addAll(lineFeed);
     bytes.addAll(lineFeed); // Feed paper agar struk bisa disobek
@@ -311,24 +392,156 @@ class BluetoothPrinterService {
     return await PrintBluetoothThermal.writeBytes(bytes);
   }
 
-  /// Cetak struk pengujian printer thermal
+  /// Cetak struk pengujian printer thermal dengan konfigurasi StoreSettings
   static Future<bool> printTestReceipt({
     String storeName = 'SCHAW CAFE',
+    StoreSettingsModel? settings,
+  }) async {
+    final connected = await isConnected();
+    if (!connected) return false;
+
+    final cols = settings?.effectiveCols ?? 32;
+    final sep = '-' * cols;
+    final doubleSep = '=' * cols;
+
+    final bytes = <int>[];
+    bytes.addAll([27, 64]); // Init
+
+    // Header Nama Toko
+    bytes.addAll([27, 97, 1]); // Center
+    if (settings?.receiptShowStoreName ?? true) {
+      bytes.addAll([27, 69, 1]); // Bold
+      if (settings?.receiptDoubleHeight ?? true) {
+        bytes.addAll([29, 33, 17]);
+      }
+      bytes.addAll(utf8.encode('$storeName\n'));
+      bytes.addAll([29, 33, 0]);
+      bytes.addAll([27, 69, 0]);
+    }
+
+    // Header Kustom
+    if (settings?.receiptHeader != null && settings!.receiptHeader!.trim().isNotEmpty) {
+      final alignCode = settings.receiptHeaderAlign == 'LEFT'
+          ? 0
+          : (settings.receiptHeaderAlign == 'RIGHT' ? 2 : 1);
+      bytes.addAll([27, 97, alignCode]);
+      if (settings.receiptHeaderBold) bytes.addAll([27, 69, 1]);
+      for (final line in settings.receiptHeader!.split('\n')) {
+        if (line.trim().isNotEmpty) bytes.addAll(utf8.encode('${line.trim()}\n'));
+      }
+      if (settings.receiptHeaderBold) bytes.addAll([27, 69, 0]);
+    }
+
+    bytes.addAll([27, 97, 1]);
+    bytes.addAll(utf8.encode('$doubleSep\n'));
+    bytes.addAll([27, 69, 1]);
+    bytes.addAll(utf8.encode('UJI COBA CETAK STRUK BERHASIL\n'));
+    bytes.addAll([27, 69, 0]);
+    bytes.addAll(utf8.encode('Koneksi Bluetooth Berjalan Lancar\n'));
+    bytes.addAll(utf8.encode('Lebar Kertas: ${settings?.printerWidth ?? 58}mm ($cols Kolom)\n'));
+    bytes.addAll(utf8.encode('$sep\n'));
+
+    // Contoh Item
+    bytes.addAll(utf8.encode(_formatRow('1x Kopi Susu Aren', 'Rp 22.000', width: cols)));
+    bytes.addAll(utf8.encode(_formatRow('1x Croissant Butter', 'Rp 28.000', width: cols)));
+    bytes.addAll(utf8.encode('$sep\n'));
+    bytes.addAll([27, 69, 1]);
+    bytes.addAll(utf8.encode(_formatRow('TOTAL', 'Rp 50.000', width: cols)));
+    bytes.addAll([27, 69, 0]);
+    bytes.addAll(utf8.encode('$doubleSep\n'));
+
+    // Footer Kustom
+    final footerAlignCode = settings?.receiptFooterAlign == 'LEFT'
+        ? 0
+        : (settings?.receiptFooterAlign == 'RIGHT' ? 2 : 1);
+    bytes.addAll([27, 97, footerAlignCode]);
+    if (settings?.receiptFooterBold ?? false) bytes.addAll([27, 69, 1]);
+    if (settings?.receiptFooter != null && settings!.receiptFooter!.trim().isNotEmpty) {
+      for (final line in settings.receiptFooter!.split('\n')) {
+        if (line.trim().isNotEmpty) bytes.addAll(utf8.encode('${line.trim()}\n'));
+      }
+    } else {
+      bytes.addAll(utf8.encode('Terima Kasih Atas Kunjungan Anda!\n'));
+      bytes.addAll(utf8.encode('Simpan struk sebagai bukti pembayaran.\n'));
+    }
+    if (settings?.receiptFooterBold ?? false) bytes.addAll([27, 69, 0]);
+
+    bytes.addAll([27, 97, 1]);
+    bytes.addAll(utf8.encode('${DateTime.now().toLocal().toString().split(".")[0]}\n'));
+    bytes.addAll([10, 10, 10]);
+
+    return await PrintBluetoothThermal.writeBytes(bytes);
+  }
+
+  /// Cetak Tent Card Meja / QR Menu ke printer thermal bluetooth
+  static Future<bool> printQrTentCard({
+    required String qrUrl,
+    String storeName = 'SCHAW CAFE',
+    String? tableNumber,
   }) async {
     final connected = await isConnected();
     if (!connected) return false;
 
     final bytes = <int>[];
-    bytes.addAll([27, 64]); // Init
-    bytes.addAll([27, 97, 1]); // Center
-    bytes.addAll([27, 69, 1]); // Bold
+
+    const escInit = [27, 64]; // Reset printer
+    const alignCenter = [27, 97, 1]; // Rata tengah
+    const boldOn = [27, 69, 1]; // Tebal aktif
+    const boldOff = [27, 69, 0]; // Tebal mati
+    const textDouble = [29, 33, 17]; // Ukuran teks 2x
+    const textNormal = [29, 33, 0]; // Ukuran teks normal
+    const lineFeed = [10]; // Newline
+
+    // 1. Inisialisasi
+    bytes.addAll(escInit);
+
+    // 2. Header Toko
+    bytes.addAll(alignCenter);
+    bytes.addAll(boldOn);
+    bytes.addAll(textDouble);
     bytes.addAll(utf8.encode('$storeName\n'));
-    bytes.addAll([27, 69, 0]); // Bold off
-    bytes.addAll(utf8.encode('UJI COBA PRINTER BERHASIL\n'));
-    bytes.addAll(utf8.encode('Koneksi Bluetooth Berjalan Lancar\n'));
-    bytes.addAll(utf8.encode('--------------------------------\n'));
-    bytes.addAll(utf8.encode('${DateTime.now().toLocal()}\n'));
-    bytes.addAll([10, 10, 10]);
+    bytes.addAll(textNormal);
+    bytes.addAll(boldOff);
+    bytes.addAll(utf8.encode('Self-Order & Digital Menu\n'));
+    bytes.addAll(utf8.encode('================================\n'));
+
+    if (tableNumber != null && tableNumber.isNotEmpty) {
+      bytes.addAll(boldOn);
+      bytes.addAll(utf8.encode('MEJA / ANTREAN: $tableNumber\n'));
+      bytes.addAll(boldOff);
+      bytes.addAll(utf8.encode('--------------------------------\n'));
+    }
+
+    bytes.addAll(utf8.encode('SCAN QR DI BAWAH INI\nUNTUK PESAN & BAYAR\n\n'));
+
+    // 3. Perintah ESC/POS QR Code standar
+    final urlBytes = utf8.encode(qrUrl);
+    final len = urlBytes.length + 3;
+    final pL = len % 256;
+    final pH = len ~/ 256;
+
+    // Set model QR (Model 2)
+    bytes.addAll([29, 40, 107, 4, 0, 49, 65, 50, 0]);
+    // Set dot size (size 8 untuk hasil cetak jelas di 58mm)
+    bytes.addAll([29, 40, 107, 3, 0, 49, 67, 8]);
+    // Set error correction level M (49)
+    bytes.addAll([29, 40, 107, 3, 0, 49, 69, 49]);
+    // Store data QR
+    bytes.addAll([29, 40, 107, pL, pH, 49, 80, 48, ...urlBytes]);
+    // Print QR symbol
+    bytes.addAll([29, 40, 107, 3, 0, 49, 81, 48]);
+
+    bytes.addAll(lineFeed);
+    bytes.addAll(lineFeed);
+
+    // 4. Footer Petunjuk
+    bytes.addAll(alignCenter);
+    bytes.addAll(utf8.encode('Buka kamera ponsel Anda & scan QR\n'));
+    bytes.addAll(utf8.encode('Pilih Menu, Bayar, dan Santai!\n'));
+    bytes.addAll(utf8.encode('================================\n'));
+    bytes.addAll(lineFeed);
+    bytes.addAll(lineFeed);
+    bytes.addAll(lineFeed);
 
     return await PrintBluetoothThermal.writeBytes(bytes);
   }

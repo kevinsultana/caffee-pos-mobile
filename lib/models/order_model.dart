@@ -136,6 +136,7 @@ class OrderModel {
   final String source;
   final String status;
   final String? publicQrToken;
+  final String? customerId;
   final String customerNameSnapshot;
   final String? customerPhoneSnapshot;
   final double productSubtotal;
@@ -148,6 +149,7 @@ class OrderModel {
   final DateTime createdAt;
   final List<OrderItemModel> items;
   final PaymentModel? payment;
+  final String? promoCodeSnapshot;
   final String? cashierName;
 
   const OrderModel({
@@ -159,10 +161,12 @@ class OrderModel {
     this.source = 'POS',
     this.status = 'PAID',
     this.publicQrToken,
+    this.customerId,
     required this.customerNameSnapshot,
     this.customerPhoneSnapshot,
     required this.productSubtotal,
     this.promotionDiscount = 0,
+    this.promoCodeSnapshot,
     required this.taxableSubtotal,
     required this.grandTotal,
     required this.cashPayable,
@@ -238,6 +242,12 @@ class OrderModel {
       cashierName = userData['name']?.toString() ?? userData['username']?.toString();
     }
 
+    // Parse promo code
+    String? promoCode = map['promoCodeSnapshot']?.toString();
+    if (promoCode == null && map['OrderPromotion'] is List && (map['OrderPromotion'] as List).isNotEmpty) {
+      promoCode = (map['OrderPromotion'] as List).first['promotionCodeSnapshot']?.toString();
+    }
+
     return OrderModel(
       id: map['id']?.toString() ?? '',
       storeId: map['storeId']?.toString() ?? '',
@@ -247,6 +257,7 @@ class OrderModel {
       source: map['source']?.toString() ?? 'POS',
       status: map['status']?.toString() ?? 'PAID',
       publicQrToken: map['publicQrToken']?.toString(),
+      customerId: map['customerId']?.toString(),
       customerNameSnapshot: map['customerNameSnapshot']?.toString() ?? 'Pelanggan',
       customerPhoneSnapshot: map['customerPhoneSnapshot']?.toString(),
       productSubtotal: (map['productSubtotal'] is num)
@@ -255,6 +266,7 @@ class OrderModel {
       promotionDiscount: (map['promotionDiscount'] is num)
           ? (map['promotionDiscount'] as num).toDouble()
           : double.tryParse(map['promotionDiscount']?.toString() ?? '0') ?? 0.0,
+      promoCodeSnapshot: promoCode,
       taxableSubtotal: (map['taxableSubtotal'] is num)
           ? (map['taxableSubtotal'] as num).toDouble()
           : double.tryParse(map['taxableSubtotal']?.toString() ?? '0') ?? 0.0,

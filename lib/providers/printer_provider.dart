@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 
 import '../models/order_model.dart';
+import '../models/store_settings_model.dart';
 import '../services/bluetooth_printer_service.dart';
 
 @immutable
@@ -127,6 +128,7 @@ class PrinterNotifier extends Notifier<PrinterState> {
     OrderModel order, {
     String storeName = 'SCHAW CAFE',
     String? cashierName,
+    StoreSettingsModel? settings,
   }) async {
     if (!state.isConnected) {
       state = state.copyWith(statusMessage: () => 'Printer belum terhubung.');
@@ -138,6 +140,7 @@ class PrinterNotifier extends Notifier<PrinterState> {
       order,
       storeName: storeName,
       cashierName: cashierName,
+      settings: settings,
     );
     state = state.copyWith(isPrinting: false);
     return success;
@@ -157,11 +160,38 @@ class PrinterNotifier extends Notifier<PrinterState> {
   }
 
   /// Cetak struk pengujian (test print)
-  Future<bool> printTestReceipt({String storeName = 'SCHAW CAFE'}) async {
+  Future<bool> printTestReceipt({
+    String storeName = 'SCHAW CAFE',
+    StoreSettingsModel? settings,
+  }) async {
     if (!state.isConnected) return false;
 
     state = state.copyWith(isPrinting: true);
-    final success = await BluetoothPrinterService.printTestReceipt(storeName: storeName);
+    final success = await BluetoothPrinterService.printTestReceipt(
+      storeName: storeName,
+      settings: settings,
+    );
+    state = state.copyWith(isPrinting: false);
+    return success;
+  }
+
+  /// Cetak Tent Card Meja / QR Menu
+  Future<bool> printQrTentCard({
+    required String qrUrl,
+    String storeName = 'SCHAW CAFE',
+    String? tableNumber,
+  }) async {
+    if (!state.isConnected) {
+      state = state.copyWith(statusMessage: () => 'Printer belum terhubung.');
+      return false;
+    }
+
+    state = state.copyWith(isPrinting: true);
+    final success = await BluetoothPrinterService.printQrTentCard(
+      qrUrl: qrUrl,
+      storeName: storeName,
+      tableNumber: tableNumber,
+    );
     state = state.copyWith(isPrinting: false);
     return success;
   }

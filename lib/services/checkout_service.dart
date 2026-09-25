@@ -1,6 +1,8 @@
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/utils/uuid_generator.dart';
 import '../models/cart_item_model.dart';
 import '../models/order_model.dart';
 import '../providers/cart_provider.dart';
@@ -52,7 +54,7 @@ class CheckoutService {
     }
   }
 
-  /// Eksekusi checkout transaksi POS ke tabel Order, OrderItem, dan Payment
+  /// Eksekusi checkout transaksi POS ke tabel Order, OrderItem, Payment, dan OrderPromotion
   static Future<CheckoutResult> processCheckout({
     required SupabaseClient client,
     required CartState cart,
@@ -85,8 +87,11 @@ class CheckoutService {
       );
     }
 
-    final totalAmount = cart.totalPrice;
-    if (totalAmount.isNaN || totalAmount <= 0) {
+    final productSubtotal = cart.subtotal;
+    final promotionDiscount = cart.promotionDiscount;
+    final grandTotal = cart.grandTotal;
+
+    if (productSubtotal.isNaN || productSubtotal <= 0) {
       return const CheckoutResult(
         error: 'Total transaksi tidak valid (harus lebih besar dari Rp 0).',
       );
@@ -106,7 +111,7 @@ class CheckoutService {
     }
 
     if (paymentMethod == 'CASH') {
-      if (cashReceived == null || cashReceived.isNaN || cashReceived < totalAmount) {
+      if (cashReceived == null || cashReceived.isNaN || cashReceived < grandTotal) {
         return const CheckoutResult(
           error: 'Uang tunai yang diterima kurang dari total belanja.',
         );
@@ -127,7 +132,7 @@ class CheckoutService {
             );
 
       final changeAmount = paymentMethod == 'CASH'
-          ? (cashReceived! - totalAmount)
+          ? (cashReceived! - grandTotal)
           : null;
 
       final custName = (customerName?.trim().isNotEmpty ?? false)
@@ -146,13 +151,15 @@ class CheckoutService {
           'createdById': dbUserId.isNotEmpty ? dbUserId : null,
           'queueNumber': queueNumber,
           'status': 'PAID',
+          'customerId': cart.customerId,
           'customerNameSnapshot': custName,
-          'productSubtotal': totalAmount,
-          'promotionDiscount': 0,
-          'taxableSubtotal': totalAmount,
-          'grandTotal': totalAmount,
+          'customerPhoneSnapshot': cart.customerPhone,
+          'productSubtotal': productSubtotal,
+          'promotionDiscount': promotionDiscount,
+          'taxableSubtotal': grandTotal,
+          'grandTotal': grandTotal,
           'roundingAmount': 0,
-          'cashPayable': totalAmount,
+          'cashPayable': grandTotal,
           'paidAt': nowUtc,
           'updatedAt': nowUtc,
         };
@@ -166,25 +173,29 @@ class CheckoutService {
       } else {
         // Buat pesanan baru langsung dari kasir POS
         effectiveOrderNumber = generateOrderNumber();
+        final newOrderId = UuidGenerator.v4();
         final orderInsertData = {
+          'id': newOrderId,
           'storeId': storeId,
           'createdById': dbUserId.isNotEmpty ? dbUserId : null,
           'orderNumber': effectiveOrderNumber,
           'queueNumber': queueNumber,
           'source': 'POS',
           'status': 'PAID',
+          'customerId': cart.customerId,
           'customerNameSnapshot': custName,
-          'productSubtotal': totalAmount,
-          'promotionDiscount': 0,
-          'taxableSubtotal': totalAmount,
+          'customerPhoneSnapshot': cart.customerPhone,
+          'productSubtotal': productSubtotal,
+          'promotionDiscount': promotionDiscount,
+          'taxableSubtotal': grandTotal,
           'serviceChargeRate': 0,
           'serviceChargeAmount': 0,
           'taxRate': 0,
           'taxBase': 0,
           'taxAmount': 0,
-          'grandTotal': totalAmount,
+          'grandTotal': grandTotal,
           'roundingAmount': 0,
-          'cashPayable': totalAmount,
+          'cashPayable': grandTotal,
           'paidAt': nowUtc,
           'updatedAt': nowUtc,
         };
@@ -193,13 +204,41 @@ class CheckoutService {
         orderId = orderRes['id'].toString();
       }
 
-      // ── 2. INSERT KE TABEL OrderItem ──────────────────────────────────────
+      // ── 2. INSERT KE TABEL OrderPromotion (jika promo aktif) ───────────────
+      if (cart.appliedPromo != null && promotionDiscount > 0) {
+        final promo = cart.appliedPromo!;
+        try {
+          await client.from('OrderPromotion').insert({
+            'id': UuidGenerator.v4(),
+            'orderId': orderId,
+            'promotionId': promo.id,
+            'sequenceNo': 1,
+            'promotionNameSnapshot': promo.name,
+            'promotionCodeSnapshot': promo.code,
+            'discountTypeSnapshot': promo.discountType,
+            'discountScopeSnapshot': promo.discountScope,
+            'valueSnapshot': promo.discountValue,
+            'maxDiscountSnapshot': promo.maxDiscount,
+            'discountAmount': promotionDiscount,
+          });
+
+          // Tambah penggunaan kuota promo
+          await client.from('Promotion').update({
+            'usageCount': promo.usageCount + 1,
+          }).eq('id', promo.id);
+        } catch (e) {
+          debugPrint('Catatan: Gagal menyimpan OrderPromotion / increment usage: $e');
+        }
+      }
+
+      // ── 3. INSERT KE TABEL OrderItem ──────────────────────────────────────
       final List<Map<String, dynamic>> orderItemsInsert = cart.items.map((it) {
         final displayName = it.variantName != null
             ? '${it.productName} (${it.variantName})'
             : it.productName;
 
         return {
+          'id': UuidGenerator.v4(),
           'orderId': orderId,
           'productId': it.productId,
           'variantId': it.variantId,
@@ -216,13 +255,14 @@ class CheckoutService {
 
       final itemsRes = await client.from('OrderItem').insert(orderItemsInsert).select();
 
-      // ── 3. INSERT KE TABEL Payment ────────────────────────────────────────
+      // ── 4. INSERT KE TABEL Payment ────────────────────────────────────────
       final paymentInsertData = {
+        'id': UuidGenerator.v4(),
         'orderId': orderId,
         'shiftId': shiftId,
         'method': paymentMethod,
         'status': 'PAID',
-        'amount': totalAmount,
+        'amount': grandTotal,
         'cashReceived': paymentMethod == 'CASH' ? cashReceived : null,
         'changeAmount': changeAmount,
         'paidAt': nowUtc,
@@ -241,11 +281,15 @@ class CheckoutService {
         source: cart.hasActiveQrOrder ? 'PUBLIC_QR' : 'POS',
         status: 'PAID',
         publicQrToken: publicToken,
+        customerId: cart.customerId,
         customerNameSnapshot: custName,
-        productSubtotal: totalAmount,
-        taxableSubtotal: totalAmount,
-        grandTotal: totalAmount,
-        cashPayable: totalAmount,
+        customerPhoneSnapshot: cart.customerPhone,
+        productSubtotal: productSubtotal,
+        promotionDiscount: promotionDiscount,
+        promoCodeSnapshot: cart.appliedPromo?.code,
+        taxableSubtotal: grandTotal,
+        grandTotal: grandTotal,
+        cashPayable: grandTotal,
         paidAt: now,
         createdAt: now,
         items: (itemsRes as List).map((i) => OrderItemModel.fromMap(i as Map<String, dynamic>)).toList(),
