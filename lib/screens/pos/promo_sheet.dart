@@ -33,6 +33,14 @@ class _PromoSheetState extends ConsumerState<PromoSheet> {
   int _selectedFilterIndex = 0; // 0: Semua, 1: Bisa Dipakai, 2: Belum Cukup Syarat
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(promotionProvider.notifier).fetchActivePromotions();
+    });
+  }
+
+  @override
   void dispose() {
     _codeController.dispose();
     super.dispose();
@@ -155,6 +163,16 @@ class _PromoSheetState extends ConsumerState<PromoSheet> {
                         ),
                       ],
                     ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh_rounded, size: 20),
+                    tooltip: 'Segarkan Promo',
+                    onPressed: () {
+                      ref
+                          .read(promotionProvider.notifier)
+                          .fetchActivePromotions();
+                      AppToast.showInfo(context, 'Memuat ulang promo...');
+                    },
                   ),
                   IconButton(
                     icon: const Icon(Icons.close_rounded),
@@ -343,43 +361,101 @@ class _PromoSheetState extends ConsumerState<PromoSheet> {
             Expanded(
               child: promoState.isLoading
                   ? const Center(child: CircularProgressIndicator())
-                  : displayedList.isEmpty
+                  : promoState.errorMessage != null &&
+                          promoState.promotions.isEmpty
                       ? Center(
                           child: Padding(
                             padding: const EdgeInsets.all(32),
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                const Icon(Icons.sentiment_dissatisfied_rounded, size: 40, color: AppColors.textMuted),
-                                const SizedBox(height: 10),
+                                const Icon(Icons.cloud_off_rounded,
+                                    size: 44, color: AppColors.error),
+                                const SizedBox(height: 12),
+                                const Text(
+                                  'Gagal Memuat Promo',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14),
+                                ),
+                                const SizedBox(height: 6),
                                 Text(
-                                  _selectedFilterIndex == 1
-                                      ? 'Belum ada promo yang memenuhi syarat saat ini.'
-                                      : _selectedFilterIndex == 2
-                                          ? 'Tidak ada promo yang kekurangan syarat.'
-                                          : 'Belum ada promo aktif di toko ini.',
+                                  promoState.errorMessage!,
                                   textAlign: TextAlign.center,
-                                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      color: AppColors.textSecondary),
+                                ),
+                                const SizedBox(height: 16),
+                                ElevatedButton.icon(
+                                  onPressed: () => ref
+                                      .read(promotionProvider.notifier)
+                                      .fetchActivePromotions(),
+                                  icon: const Icon(Icons.refresh_rounded,
+                                      size: 16),
+                                  label: const Text('Coba Lagi'),
                                 ),
                               ],
                             ),
                           ),
                         )
-                      : ListView.separated(
-                          controller: scrollController,
-                          padding: const EdgeInsets.all(20),
-                          itemCount: displayedList.length,
-                          separatorBuilder: (context, index) => const SizedBox(height: 12),
-                          itemBuilder: (ctx, idx) {
-                            final item = displayedList[idx];
-                            return _buildPromoCard(
-                              promo: item.promo,
-                              eval: item.eval,
-                              isApplied: item.isApplied,
-                              currencyFormatter: currencyFormatter,
-                            );
-                          },
-                        ),
+                      : displayedList.isEmpty
+                          ? Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(32),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Icon(
+                                        Icons.sentiment_dissatisfied_rounded,
+                                        size: 40,
+                                        color: AppColors.textMuted),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      _selectedFilterIndex == 1
+                                          ? 'Belum ada promo yang memenuhi syarat saat ini.'
+                                          : _selectedFilterIndex == 2
+                                              ? 'Tidak ada promo yang kekurangan syarat.'
+                                              : 'Belum ada promo aktif di toko ini.',
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                          fontSize: 13,
+                                          color: AppColors.textSecondary),
+                                    ),
+                                    const SizedBox(height: 14),
+                                    TextButton.icon(
+                                      onPressed: () => ref
+                                          .read(promotionProvider.notifier)
+                                          .fetchActivePromotions(),
+                                      icon: const Icon(Icons.refresh_rounded,
+                                          size: 16),
+                                      label: const Text('Segarkan'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            )
+                          : RefreshIndicator(
+                              onRefresh: () => ref
+                                  .read(promotionProvider.notifier)
+                                  .fetchActivePromotions(),
+                              child: ListView.separated(
+                                controller: scrollController,
+                                padding: const EdgeInsets.all(20),
+                                itemCount: displayedList.length,
+                                separatorBuilder: (context, index) =>
+                                    const SizedBox(height: 12),
+                                itemBuilder: (ctx, idx) {
+                                  final item = displayedList[idx];
+                                  return _buildPromoCard(
+                                    promo: item.promo,
+                                    eval: item.eval,
+                                    isApplied: item.isApplied,
+                                    currencyFormatter: currencyFormatter,
+                                  );
+                                },
+                              ),
+                            ),
             ),
           ],
         );

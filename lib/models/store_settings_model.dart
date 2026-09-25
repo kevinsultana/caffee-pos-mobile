@@ -17,6 +17,7 @@ class StoreSettingsModel {
   final String receiptFontSize; // 'NORMAL', 'SMALL'
   final bool receiptDoubleHeight;
   final int? receiptCols; // null -> otomatis 32 (58mm) atau 48 (80mm)
+  final String? qrisImageUrl;
 
   const StoreSettingsModel({
     required this.id,
@@ -35,6 +36,7 @@ class StoreSettingsModel {
     this.receiptFontSize = 'NORMAL',
     this.receiptDoubleHeight = true,
     this.receiptCols,
+    this.qrisImageUrl,
   });
 
   /// Jumlah kolom efektif untuk format teks ESC/POS
@@ -79,6 +81,8 @@ class StoreSettingsModel {
       receiptCols: (map['receiptCols'] is num)
           ? (map['receiptCols'] as num).toInt()
           : int.tryParse(map['receiptCols']?.toString() ?? ''),
+      qrisImageUrl: map['qrisImageUrl']?.toString() ??
+          map['qris_image_url']?.toString(),
     );
   }
 
@@ -99,6 +103,7 @@ class StoreSettingsModel {
       'receiptFontSize': receiptFontSize,
       'receiptDoubleHeight': receiptDoubleHeight,
       'receiptCols': receiptCols,
+      if (qrisImageUrl != null) 'qrisImageUrl': qrisImageUrl,
     };
   }
 
@@ -118,6 +123,7 @@ class StoreSettingsModel {
     String? receiptFontSize,
     bool? receiptDoubleHeight,
     int? receiptCols,
+    String? qrisImageUrl,
   }) {
     return StoreSettingsModel(
       id: id ?? this.id,
@@ -135,6 +141,7 @@ class StoreSettingsModel {
       receiptFontSize: receiptFontSize ?? this.receiptFontSize,
       receiptDoubleHeight: receiptDoubleHeight ?? this.receiptDoubleHeight,
       receiptCols: receiptCols ?? this.receiptCols,
+      qrisImageUrl: qrisImageUrl ?? this.qrisImageUrl,
     );
   }
 
@@ -155,6 +162,7 @@ class StoreSettingsModel {
       receiptFontSize: 'NORMAL',
       receiptDoubleHeight: true,
       receiptCols: null,
+      qrisImageUrl: null,
     );
   }
 }

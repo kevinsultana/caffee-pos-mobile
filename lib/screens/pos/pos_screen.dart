@@ -14,6 +14,7 @@ import '../../providers/cart_provider.dart';
 import '../../providers/online_orders_provider.dart';
 import '../../providers/product_provider.dart';
 import '../../providers/shift_provider.dart';
+import '../../providers/promotion_provider.dart';
 import '../../widgets/product_action_sheet.dart';
 import '../../core/utils/app_toast.dart';
 import 'package:go_router/go_router.dart';
@@ -35,6 +36,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     super.initState();
     Future.microtask(() {
       ref.read(onlineOrdersProvider.notifier).fetchPendingOrders();
+      ref.read(promotionProvider.notifier).fetchActivePromotions();
     });
   }
 

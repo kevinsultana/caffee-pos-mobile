@@ -70,47 +70,63 @@ class PromotionModel {
     return null;
   }
 
-  factory PromotionModel.fromMap(Map<String, dynamic> map) {
-    // 1. Ekstrak data action diskon
-    Map<String, dynamic>? actionMap;
-    final rawAction = map['discountAction'];
-    if (rawAction is Map<String, dynamic>) {
-      actionMap = rawAction;
-    } else if (rawAction is List && rawAction.isNotEmpty && rawAction.first is Map<String, dynamic>) {
-      actionMap = rawAction.first as Map<String, dynamic>;
+  factory PromotionModel.fromMap(Map<dynamic, dynamic> rawMap) {
+    Map<String, dynamic>? toMap(dynamic val) {
+      if (val == null) return null;
+      if (val is Map) {
+        return val.map((k, v) => MapEntry(k.toString(), v));
+      }
+      return null;
     }
 
-    final dType = actionMap?['type']?.toString() ?? map['discountType']?.toString() ?? 'FIXED';
-    final dScope = actionMap?['scope']?.toString() ?? map['discountScope']?.toString() ?? 'ORDER';
+    Map<String, dynamic>? firstMap(dynamic val) {
+      if (val == null) return null;
+      if (val is Map) return toMap(val);
+      if (val is List && val.isNotEmpty) return toMap(val.first);
+      return null;
+    }
+
+    final map = toMap(rawMap) ?? <String, dynamic>{};
+
+    // 1. Ekstrak data action diskon (bisa Map atau List dari Supabase PostgREST)
+    final actionMap = firstMap(map['discountAction']);
+
+    final rawType = actionMap?['type']?.toString() ??
+        map['discountType']?.toString() ??
+        'PERCENTAGE';
+    final dType =
+        rawType.toUpperCase().contains('PERCENT') ? 'PERCENTAGE' : 'FIXED';
+    final dScope = actionMap?['scope']?.toString() ??
+        map['discountScope']?.toString() ??
+        'ORDER';
     final dValue = (actionMap?['value'] is num)
         ? (actionMap!['value'] as num).toDouble()
-        : double.tryParse(actionMap?['value']?.toString() ?? map['discountValue']?.toString() ?? '0') ?? 0.0;
+        : double.tryParse(actionMap?['value']?.toString() ??
+                map['discountValue']?.toString() ??
+                '0') ??
+            0.0;
     final maxDisc = (actionMap?['maxDiscount'] is num)
         ? (actionMap!['maxDiscount'] as num).toDouble()
-        : double.tryParse(actionMap?['maxDiscount']?.toString() ?? map['maxDiscount']?.toString() ?? '');
+        : double.tryParse(actionMap?['maxDiscount']?.toString() ??
+            map['maxDiscount']?.toString() ??
+            '');
 
-    // 2. Ekstrak data condition group & conditions
-    Map<String, dynamic>? groupMap;
-    final rawGroup = map['conditionGroup'];
-    if (rawGroup is Map<String, dynamic>) {
-      groupMap = rawGroup;
-    } else if (rawGroup is List && rawGroup.isNotEmpty && rawGroup.first is Map<String, dynamic>) {
-      groupMap = rawGroup.first as Map<String, dynamic>;
-    }
+    // 2. Ekstrak data condition group & conditions (bisa Map atau List)
+    final groupMap = firstMap(map['conditionGroup']);
 
     List<dynamic> conditionList = [];
-    if (groupMap?['conditions'] is List) {
-      conditionList = groupMap!['conditions'] as List;
-    } else if (map['conditions'] is List) {
-      conditionList = map['conditions'] as List;
+    final rawConds = groupMap?['conditions'] ?? map['conditions'];
+    if (rawConds is List) {
+      conditionList = rawConds;
     }
 
     double? minPurchase;
     String? targetProdId;
     String? targetProdName;
 
-    for (final c in conditionList) {
-      if (c is Map<String, dynamic>) {
+    for (final rawC in conditionList) {
+      final c = toMap(rawC);
+      if (c != null) {
         final cType = c['type']?.toString();
         if (cType == 'MINIMUM_PURCHASE') {
           minPurchase = (c['minimumPurchase'] is num)
@@ -118,8 +134,9 @@ class PromotionModel {
               : double.tryParse(c['minimumPurchase']?.toString() ?? '');
         } else if (cType == 'PRODUCT') {
           targetProdId = c['productId']?.toString();
-          if (c['product'] is Map<String, dynamic>) {
-            targetProdName = c['product']['name']?.toString();
+          final prod = toMap(c['product']);
+          if (prod != null) {
+            targetProdName = prod['name']?.toString();
           }
         }
       }

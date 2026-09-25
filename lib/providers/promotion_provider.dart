@@ -53,14 +53,17 @@ class PromotionNotifier extends Notifier<PromotionState> {
   /// Ambil daftar seluruh promosi aktif dari Supabase
   Future<void> fetchActivePromotions([String? explicitStoreId]) async {
     final storeId = explicitStoreId ?? ref.read(authProvider).storeId;
-    if (storeId.isEmpty) return;
+    if (storeId.isEmpty) {
+      debugPrint('[PromotionNotifier] fetchActivePromotions: storeId is empty');
+      return;
+    }
 
     state = state.copyWith(isLoading: true, errorMessage: () => null);
 
     try {
       final supaClient = Supabase.instance.client;
-      final nowUtc = DateTime.now().toUtc().toIso8601String();
 
+      // Ambil promosi dengan status ACTIVE untuk store ini
       final response = await supaClient
           .from('Promotion')
           .select('''
@@ -76,23 +79,33 @@ class PromotionNotifier extends Notifier<PromotionState> {
           ''')
           .eq('storeId', storeId)
           .eq('status', 'ACTIVE')
-          .lte('startAt', nowUtc)
-          .or('endAt.is.null,endAt.gte.$nowUtc')
           .order('priority', ascending: false)
           .order('createdAt', ascending: false);
 
-      final list = (response as List)
-          .map((m) => PromotionModel.fromMap(m as Map<String, dynamic>))
-          .where((p) => p.usageLimit == null || p.usageCount < p.usageLimit!)
-          .toList();
+      final now = DateTime.now();
+      final list = <PromotionModel>[];
+
+      for (final rawItem in (response as List)) {
+        if (rawItem is Map) {
+          final p = PromotionModel.fromMap(rawItem);
+          if (p.id.isNotEmpty) {
+            // Validasi tanggal mulai & berakhir secara lokal agar akurat
+            if (p.startDate != null && now.isBefore(p.startDate!)) continue;
+            if (p.endDate != null && now.isAfter(p.endDate!)) continue;
+            // Validasi kuota penggunaan
+            if (p.usageLimit != null && p.usageCount >= p.usageLimit!) continue;
+            list.add(p);
+          }
+        }
+      }
 
       state = state.copyWith(
         promotions: list,
         isLoading: false,
         errorMessage: () => null,
       );
-    } catch (e) {
-      debugPrint('[PromotionNotifier] fetchActivePromotions error: $e');
+    } catch (e, st) {
+      debugPrint('[PromotionNotifier] fetchActivePromotions error: $e\n$st');
       state = state.copyWith(
         isLoading: false,
         errorMessage: () => 'Gagal memuat promosi: ${e.toString()}',

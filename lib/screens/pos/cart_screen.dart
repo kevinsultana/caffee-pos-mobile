@@ -30,6 +30,9 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     super.initState();
     _customerCtrl =
         TextEditingController(text: ref.read(cartProvider).customerName);
+    Future.microtask(() {
+      ref.read(promotionProvider.notifier).fetchActivePromotions();
+    });
   }
 
   @override

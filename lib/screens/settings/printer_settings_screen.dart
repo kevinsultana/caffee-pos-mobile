@@ -205,14 +205,16 @@ class _PrinterSettingsScreenState extends ConsumerState<PrinterSettingsScreen> {
                               ),
                             ),
                             const SizedBox(width: 6),
-                            Text(
-                              printerState.isConnected
-                                  ? 'Printer Terhubung'
-                                  : 'Printer Belum Terhubung',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.textPrimary,
+                            Expanded(
+                              child: Text(
+                                printerState.isConnected
+                                    ? 'Printer Terhubung'
+                                    : 'Printer Belum Terhubung',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.textPrimary,
+                                ),
                               ),
                             ),
                           ],
@@ -243,12 +245,14 @@ class _PrinterSettingsScreenState extends ConsumerState<PrinterSettingsScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Perangkat Bluetooth Terpasang',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary,
+              const Expanded(
+                child: Text(
+                  'Perangkat Bluetooth Terpasang',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
               ),
               TextButton.icon(
@@ -591,16 +595,20 @@ class _PrinterSettingsScreenState extends ConsumerState<PrinterSettingsScreen> {
 
                   const SizedBox(height: 12),
 
-                  Row(
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
                         'Rata Teks Header:',
                         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                       ),
-                      const Spacer(),
-                      _buildAlignSelector(
-                        currentAlign: _headerAlign,
-                        onChanged: (align) => setState(() => _headerAlign = align),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: _buildAlignSelector(
+                          currentAlign: _headerAlign,
+                          onChanged: (align) => setState(() => _headerAlign = align),
+                        ),
                       ),
                     ],
                   ),
@@ -660,16 +668,20 @@ class _PrinterSettingsScreenState extends ConsumerState<PrinterSettingsScreen> {
 
                   const SizedBox(height: 12),
 
-                  Row(
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
                         'Rata Teks Footer:',
                         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                       ),
-                      const Spacer(),
-                      _buildAlignSelector(
-                        currentAlign: _footerAlign,
-                        onChanged: (align) => setState(() => _footerAlign = align),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: _buildAlignSelector(
+                          currentAlign: _footerAlign,
+                          onChanged: (align) => setState(() => _footerAlign = align),
+                        ),
                       ),
                     ],
                   ),
@@ -690,42 +702,44 @@ class _PrinterSettingsScreenState extends ConsumerState<PrinterSettingsScreen> {
                   const SizedBox(height: 20),
 
                   // ── UKURAN FONT STRUK ──
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Ukuran Font Struk',
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-                          ),
-                          Text(
-                            'Font A (standar) atau Font B (kompak/hemat kertas)',
-                            style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                          ),
-                        ],
+                      const Text(
+                        'Ukuran Font Struk',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                       ),
-                      SegmentedButton<String>(
-                        segments: const [
-                          ButtonSegment(
-                            value: 'NORMAL',
-                            label: Text('Normal'),
-                          ),
-                          ButtonSegment(
-                            value: 'SMALL',
-                            label: Text('Kecil'),
-                          ),
-                        ],
-                        selected: {_fontSize},
-                        onSelectionChanged: (newSelection) {
-                          setState(() => _fontSize = newSelection.first);
-                        },
-                        style: ButtonStyle(
-                          visualDensity: VisualDensity.compact,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          shape: WidgetStateProperty.all(
-                            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      const SizedBox(height: 2),
+                      const Text(
+                        'Font A (standar) atau Font B (kompak/hemat kertas)',
+                        style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: SegmentedButton<String>(
+                          segments: const [
+                            ButtonSegment(
+                              value: 'NORMAL',
+                              label: Text('Normal (Font A)'),
+                              icon: Icon(Icons.text_fields_rounded, size: 16),
+                            ),
+                            ButtonSegment(
+                              value: 'SMALL',
+                              label: Text('Kecil (Font B)'),
+                              icon: Icon(Icons.compress_rounded, size: 16),
+                            ),
+                          ],
+                          selected: {_fontSize},
+                          onSelectionChanged: (newSelection) {
+                            setState(() => _fontSize = newSelection.first);
+                          },
+                          style: ButtonStyle(
+                            visualDensity: VisualDensity.compact,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            shape: WidgetStateProperty.all(
+                              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
                           ),
                         ),
                       ),
