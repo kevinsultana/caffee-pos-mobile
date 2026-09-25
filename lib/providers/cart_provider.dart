@@ -394,7 +394,8 @@ class CartNotifier extends Notifier<CartState> {
     DiningOption option = DiningOption.dineIn;
     if (order.queueNumber != null && order.queueNumber!.isNotEmpty) {
       qDigits = order.queueNumber!.replaceAll(RegExp(r'\D'), '');
-      if (order.queueNumber!.toUpperCase().startsWith('TA')) {
+      if (order.queueNumber!.toUpperCase().startsWith('TA') ||
+          order.queueNumber!.toUpperCase().startsWith('T')) {
         option = DiningOption.takeaway;
       } else {
         option = DiningOption.dineIn;

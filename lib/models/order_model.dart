@@ -200,7 +200,9 @@ class OrderModel {
     }
   }
 
-  bool get isDineIn => queueNumber?.startsWith('A') ?? false;
+  bool get isDineIn =>
+      (queueNumber?.startsWith('D') ?? false) ||
+      (queueNumber?.startsWith('A') ?? false);
   String get diningLabel => isDineIn ? 'Dine-in' : 'Takeaway';
 
   int get minutesLeft {

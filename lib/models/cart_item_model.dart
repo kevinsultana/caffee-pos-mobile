@@ -19,9 +19,9 @@ extension DiningOptionExt on DiningOption {
   String get shortCode {
     switch (this) {
       case DiningOption.dineIn:
-        return 'A'; // Kode antrean dine in
+        return 'D'; // Kode antrean dine-in (D-XXX)
       case DiningOption.takeaway:
-        return 'TA'; // Kode antrean takeaway
+        return 'T'; // Kode antrean takeaway (T-XXX)
     }
   }
 }

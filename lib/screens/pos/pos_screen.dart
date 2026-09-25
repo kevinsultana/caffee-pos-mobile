@@ -16,7 +16,7 @@ import '../../providers/product_provider.dart';
 import '../../providers/shift_provider.dart';
 import '../../widgets/product_action_sheet.dart';
 import '../../core/utils/app_toast.dart';
-import 'cart_sheet.dart';
+import 'package:go_router/go_router.dart';
 
 class PosScreen extends ConsumerStatefulWidget {
   const PosScreen({super.key});
@@ -108,12 +108,12 @@ class _PosScreenState extends ConsumerState<PosScreen> {
       );
     }
 
-    // Beralih ke tab katalog menu dan langsung buka CartSheet
+    // Beralih ke tab katalog menu dan langsung buka CartScreen
     setState(() {
       _selectedPosTab = 0;
     });
 
-    CartSheet.show(context);
+    context.push('/pos/cart');
   }
 
   void _confirmCancelQrOrder(OrderModel order) {
@@ -828,7 +828,9 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: order.queueNumber!.startsWith('TA') ? AppColors.amberLight : AppColors.primaryContainer,
+                      color: (order.queueNumber!.startsWith('TA') || order.queueNumber!.startsWith('T'))
+                          ? AppColors.amberLight
+                          : AppColors.primaryContainer,
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
@@ -836,7 +838,9 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
-                        color: order.queueNumber!.startsWith('TA') ? AppColors.amber : AppColors.primaryDark,
+                        color: (order.queueNumber!.startsWith('TA') || order.queueNumber!.startsWith('T'))
+                            ? AppColors.amber
+                            : AppColors.primaryDark,
                       ),
                     ),
                   ),
@@ -1278,7 +1282,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
       elevation: 8,
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
-        onTap: () => CartSheet.show(context),
+        onTap: () => context.push('/pos/cart'),
         borderRadius: BorderRadius.circular(20),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

@@ -25,6 +25,7 @@ class CheckoutScreen extends ConsumerStatefulWidget {
 class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   final _customerNameController = TextEditingController(text: 'Pelanggan');
   final _cashController = TextEditingController();
+  late final TextEditingController _queueController;
   String _paymentMethod = 'CASH'; // 'CASH' or 'QRIS'
   bool _autoPrintReceipt = true;
   bool _isProcessing = false;
@@ -32,12 +33,15 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   @override
   void initState() {
     super.initState();
+    final cart = ref.read(cartProvider);
+    _queueController = TextEditingController(text: cart.queueInput);
+
     // Default isi uang tunai dengan nominal pas
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final cart = ref.read(cartProvider);
-      _cashController.text = cart.grandTotal.toStringAsFixed(0);
-      if (cart.customerName.trim().isNotEmpty) {
-        _customerNameController.text = cart.customerName.trim();
+      final currentCart = ref.read(cartProvider);
+      _cashController.text = currentCart.grandTotal.toStringAsFixed(0);
+      if (currentCart.customerName.trim().isNotEmpty) {
+        _customerNameController.text = currentCart.customerName.trim();
       }
     });
   }
@@ -46,6 +50,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   void dispose() {
     _customerNameController.dispose();
     _cashController.dispose();
+    _queueController.dispose();
     super.dispose();
   }
 
@@ -71,6 +76,14 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
     if (cart.isEmpty) {
       AppToast.showError(context, 'Keranjang belanja kosong.');
+      return;
+    }
+
+    if (cart.queueInput.trim().isEmpty) {
+      AppToast.showError(
+        context,
+        'Nomor antrean wajib diisi sebelum memproses pembayaran!',
+      );
       return;
     }
 
@@ -440,6 +453,13 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   Widget build(BuildContext context) {
     final cart = ref.watch(cartProvider);
 
+    ref.listen<CartState>(cartProvider, (prev, next) {
+      if (prev?.queueInput != next.queueInput &&
+          _queueController.text != next.queueInput) {
+        _queueController.text = next.queueInput;
+      }
+    });
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -584,7 +604,198 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
                 const SizedBox(height: 16),
 
-                // 3. Pilihan Metode Pembayaran
+                // 3. Input Nomor Antrean (Wajib Diisi)
+                Card(
+                  elevation: 0,
+                  color: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    side: BorderSide(
+                      color: cart.queueInput.trim().isEmpty
+                          ? AppColors.error.withValues(alpha: 0.6)
+                          : AppColors.border,
+                      width: cart.queueInput.trim().isEmpty ? 1.4 : 1.0,
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: cart.diningOption == DiningOption.dineIn
+                                    ? AppColors.primaryContainer
+                                    : AppColors.amberLight,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(
+                                Icons.confirmation_number_outlined,
+                                size: 16,
+                                color: cart.diningOption == DiningOption.dineIn
+                                    ? AppColors.primaryDark
+                                    : AppColors.amber,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Nomor Antrean *',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: cart.diningOption == DiningOption.dineIn
+                                    ? AppColors.primaryContainer
+                                    : AppColors.amberLight,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                cart.diningOption.label,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: cart.diningOption == DiningOption.dineIn
+                                      ? AppColors.primaryDark
+                                      : AppColors.amber,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Container(
+                          height: 52,
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceMuted,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: cart.queueInput.trim().isEmpty
+                                  ? AppColors.error.withValues(alpha: 0.8)
+                                  : AppColors.border,
+                              width: cart.queueInput.trim().isEmpty ? 1.4 : 1.0,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              // Prefix otomatis: D- (Dine-in) atau T- (Takeaway)
+                              Container(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 16),
+                                height: double.infinity,
+                                decoration: BoxDecoration(
+                                  color: cart.diningOption == DiningOption.takeaway
+                                      ? AppColors.amberLight
+                                      : AppColors.primaryContainer,
+                                  borderRadius: const BorderRadius.horizontal(
+                                      left: Radius.circular(13)),
+                                  border: const Border(
+                                    right: BorderSide(color: AppColors.border),
+                                  ),
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  cart.diningOption == DiningOption.dineIn
+                                      ? 'D-'
+                                      : 'T-',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 18,
+                                    color: cart.diningOption ==
+                                            DiningOption.takeaway
+                                        ? AppColors.amber
+                                        : AppColors.primaryDark,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: TextField(
+                                  controller: _queueController,
+                                  keyboardType: TextInputType.number,
+                                  textInputAction: TextInputAction.next,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly
+                                  ],
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 18,
+                                    fontFamily: 'monospace',
+                                    color: cart.queueInput.trim().isEmpty
+                                        ? AppColors.error
+                                        : AppColors.textPrimary,
+                                  ),
+                                  decoration: InputDecoration(
+                                    hintText: 'Contoh: 01 (Wajib diisi)',
+                                    hintStyle: TextStyle(
+                                      fontSize: 12,
+                                      color:
+                                          AppColors.error.withValues(alpha: 0.6),
+                                      fontWeight: FontWeight.w600,
+                                      fontFamily: 'sans-serif',
+                                    ),
+                                    border: InputBorder.none,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 14, vertical: 14),
+                                    isDense: true,
+                                  ),
+                                  onChanged: (val) {
+                                    ref
+                                        .read(cartProvider.notifier)
+                                        .setQueueInput(val);
+                                    setState(() {});
+                                  },
+                                ),
+                              ),
+                              if (cart.queueInput.trim().isNotEmpty)
+                                IconButton(
+                                  icon: const Icon(Icons.clear_rounded,
+                                      size: 18, color: AppColors.textMuted),
+                                  onPressed: () {
+                                    _queueController.clear();
+                                    ref
+                                        .read(cartProvider.notifier)
+                                        .setQueueInput('');
+                                    setState(() {});
+                                  },
+                                ),
+                            ],
+                          ),
+                        ),
+                        if (cart.queueInput.trim().isEmpty) ...[
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              const Icon(Icons.error_outline_rounded,
+                                  size: 13, color: AppColors.error),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Nomor antrean wajib diisi sebelum pembayaran diproses',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: AppColors.error.withValues(alpha: 0.9),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // 4. Pilihan Metode Pembayaran
                 Card(
                   elevation: 0,
                   color: Colors.white,
@@ -859,7 +1070,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                           )
                         : Text(
-                            'Selesaikan Pembayaran • ${cart.formattedGrandTotal}',
+                            'Konfirmasi & Selesaikan Pembayaran • ${cart.formattedGrandTotal}',
                             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                           ),
                   ),

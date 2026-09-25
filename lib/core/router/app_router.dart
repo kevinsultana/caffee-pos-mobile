@@ -8,6 +8,7 @@ import '../../screens/auth/change_password_screen.dart';
 import '../../screens/auth/login_screen.dart';
 import '../../screens/history/history_screen.dart';
 import '../../screens/main_layout.dart';
+import '../../screens/pos/cart_screen.dart';
 import '../../screens/pos/checkout_screen.dart';
 import '../../screens/pos/pos_screen.dart';
 import '../../screens/qr_table/qr_table_screen.dart';
@@ -79,6 +80,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/settings/printer',
         builder: (context, state) => const PrinterSettingsScreen(),
+      ),
+      GoRoute(
+        path: '/pos/cart',
+        builder: (context, state) => const CartScreen(),
       ),
       GoRoute(
         path: '/pos/checkout',
