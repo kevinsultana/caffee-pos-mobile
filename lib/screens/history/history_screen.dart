@@ -10,6 +10,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/printer_provider.dart';
 import '../../providers/shift_provider.dart';
 import '../../providers/store_settings_provider.dart';
+import '../../providers/tab_refresh_provider.dart';
 
 class HistoryScreen extends ConsumerStatefulWidget {
   const HistoryScreen({super.key});
@@ -33,21 +34,27 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   }
 
   Future<void> _fetchOrders() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
     try {
-      final activeShift = ref.read(shiftProvider).activeShift;
+      var activeShift = ref.read(shiftProvider).activeShift;
       if (activeShift == null) {
-        if (mounted) {
-          setState(() {
-            _orders = [];
-            _isLoading = false;
-          });
+        // Cek shift aktif terlebih dahulu jika belum termuat
+        await ref.read(shiftProvider.notifier).checkActiveShift();
+        activeShift = ref.read(shiftProvider).activeShift;
+        if (activeShift == null) {
+          if (mounted) {
+            setState(() {
+              _orders = [];
+              _isLoading = false;
+            });
+          }
+          return;
         }
-        return;
       }
 
       final auth = ref.read(authProvider);
@@ -435,7 +442,16 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     final activeShift = ref.watch(shiftProvider).activeShift;
     ref.listen(shiftProvider.select((s) => s.activeShift?.id), (previous, next) {
       if (previous != next) {
-        _fetchOrders();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _fetchOrders();
+        });
+      }
+    });
+    ref.listen<int>(historyRefreshProvider, (previous, next) {
+      if (previous != next) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _fetchOrders();
+        });
       }
     });
 

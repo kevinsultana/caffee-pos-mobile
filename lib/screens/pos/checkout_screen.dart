@@ -15,6 +15,7 @@ import '../../providers/customer_provider.dart';
 import '../../providers/printer_provider.dart';
 import '../../providers/shift_provider.dart';
 import '../../providers/store_settings_provider.dart';
+import '../../providers/tab_refresh_provider.dart';
 import '../../services/checkout_service.dart';
 import 'member_selector_sheet.dart';
 
@@ -396,6 +397,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
     // Kosongkan keranjang belanja
     ref.read(cartProvider.notifier).clearCart();
+
+    // Picu pembaruan data Shift & Riwayat transaksi secara real-time
+    ref.read(shiftProvider.notifier).checkActiveShift();
+    ref.read(historyRefreshProvider.notifier).trigger();
+    ref.read(shiftRefreshProvider.notifier).trigger();
 
     // Tampilkan dialog sukses transaksi
     _showSuccessDialog(createdOrder);

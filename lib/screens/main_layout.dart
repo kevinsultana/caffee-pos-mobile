@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../core/constants/app_colors.dart';
 import '../providers/auth_provider.dart';
+import '../providers/shift_provider.dart';
+import '../providers/tab_refresh_provider.dart';
 
-class MainLayout extends ConsumerWidget {
+class MainLayout extends ConsumerStatefulWidget {
   final StatefulNavigationShell navigationShell;
 
   const MainLayout({
@@ -12,11 +14,62 @@ class MainLayout extends ConsumerWidget {
     required this.navigationShell,
   });
 
+  @override
+  ConsumerState<MainLayout> createState() => _MainLayoutState();
+}
+
+class _MainLayoutState extends ConsumerState<MainLayout> {
+  int _lastIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _lastIndex = widget.navigationShell.currentIndex;
+    if (_lastIndex == 1 || _lastIndex == 2) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _onTabActivated(_lastIndex);
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(MainLayout oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final currentIndex = widget.navigationShell.currentIndex;
+    if (currentIndex != _lastIndex) {
+      _lastIndex = currentIndex;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _onTabActivated(currentIndex);
+        }
+      });
+    }
+  }
+
+  void _onTabActivated(int index) {
+    if (!mounted) return;
+    if (index == 1) {
+      // Masuk ke menu Riwayat -> picu refresh
+      ref.read(historyRefreshProvider.notifier).trigger();
+    } else if (index == 2) {
+      // Masuk ke menu Shift -> perbarui shift aktif & summary keuangan
+      ref.read(shiftProvider.notifier).checkActiveShift();
+      ref.read(shiftRefreshProvider.notifier).trigger();
+    }
+  }
+
   void _onItemTapped(int index) {
-    navigationShell.goBranch(
+    final isSameTab = index == widget.navigationShell.currentIndex;
+    widget.navigationShell.goBranch(
       index,
-      initialLocation: index == navigationShell.currentIndex,
+      initialLocation: isSameTab,
     );
+    // Jalankan refresh setelah frame selesai dibangun
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _onTabActivated(index);
+      }
+    });
   }
 
   String _getTitle(int index) {
@@ -35,8 +88,8 @@ class MainLayout extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final currentIndex = navigationShell.currentIndex;
+  Widget build(BuildContext context) {
+    final currentIndex = widget.navigationShell.currentIndex;
     final authState = ref.watch(authProvider);
 
     return Scaffold(
@@ -126,7 +179,7 @@ class MainLayout extends ConsumerWidget {
           ),
         ],
       ),
-      body: navigationShell,
+      body: widget.navigationShell,
       bottomNavigationBar: NavigationBar(
         selectedIndex: currentIndex,
         onDestinationSelected: _onItemTapped,

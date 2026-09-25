@@ -9,6 +9,7 @@ import '../../models/cash_movement_model.dart';
 import '../../models/shift_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/shift_provider.dart';
+import '../../providers/tab_refresh_provider.dart';
 
 class ShiftScreen extends ConsumerStatefulWidget {
   const ShiftScreen({super.key});
@@ -528,6 +529,16 @@ class _ShiftScreenState extends ConsumerState<ShiftScreen> {
   // ─────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(shiftRefreshProvider, (previous, next) {
+      if (previous != next) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            ref.read(shiftProvider.notifier).checkActiveShift();
+          }
+        });
+      }
+    });
+
     final shiftState = ref.watch(shiftProvider);
     final authState = ref.watch(authProvider);
 
