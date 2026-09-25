@@ -11,10 +11,12 @@ import '../../models/order_model.dart';
 import '../../models/store_settings_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/cart_provider.dart';
+import '../../providers/customer_provider.dart';
 import '../../providers/printer_provider.dart';
 import '../../providers/shift_provider.dart';
 import '../../providers/store_settings_provider.dart';
 import '../../services/checkout_service.dart';
+import 'member_selector_sheet.dart';
 
 class CheckoutScreen extends ConsumerStatefulWidget {
   const CheckoutScreen({super.key});
@@ -40,7 +42,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     // Default isi uang tunai dengan nominal pas & pastikan settings termuat
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final currentCart = ref.read(cartProvider);
-      _cashController.text = currentCart.grandTotal.toStringAsFixed(0);
+      final intVal = currentCart.grandTotal.round();
+      _cashController.text =
+          NumberFormat.decimalPattern('id_ID').format(intVal);
       if (currentCart.customerName.trim().isNotEmpty) {
         _customerNameController.text = currentCart.customerName.trim();
       }
@@ -59,7 +63,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     super.dispose();
   }
 
-  double get _cashReceived => double.tryParse(_cashController.text) ?? 0.0;
+  double get _cashReceived {
+    final cleanStr =
+        _cashController.text.replaceAll('.', '').replaceAll(',', '').trim();
+    return double.tryParse(cleanStr) ?? 0.0;
+  }
 
   double get _changeAmount {
     final cart = ref.read(cartProvider);
@@ -73,6 +81,246 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       decimalDigits: 0,
     ).format(amount);
   }
+
+  List<int> _getSuggestedCashAmounts(double total) {
+    final numTotal = total.round();
+    if (numTotal <= 0) return [10000, 20000, 50000, 100000];
+
+    final suggestions = <int>{};
+    const standardNotes = [2000, 5000, 10000, 20000, 50000, 100000];
+    for (final note in standardNotes) {
+      if (note > numTotal) {
+        suggestions.add(note);
+      }
+    }
+
+    if (numTotal < 100000) {
+      final ceil5k = ((numTotal + 4999) ~/ 5000) * 5000;
+      if (ceil5k > numTotal) suggestions.add(ceil5k);
+
+      final ceil10k = ((numTotal + 9999) ~/ 10000) * 10000;
+      if (ceil10k > numTotal) suggestions.add(ceil10k);
+
+      final ceil20k = ((numTotal + 19999) ~/ 20000) * 20000;
+      if (ceil20k > numTotal && ceil20k <= 100000) suggestions.add(ceil20k);
+
+      if (numTotal < 50000) suggestions.add(50000);
+      if (numTotal < 100000) suggestions.add(100000);
+    } else {
+      final ceil10k = ((numTotal + 9999) ~/ 10000) * 10000;
+      if (ceil10k > numTotal) suggestions.add(ceil10k);
+
+      final ceil20k = ((numTotal + 19999) ~/ 20000) * 20000;
+      if (ceil20k > numTotal) suggestions.add(ceil20k);
+
+      final ceil50k = ((numTotal + 49999) ~/ 50000) * 50000;
+      if (ceil50k > numTotal) suggestions.add(ceil50k);
+
+      final ceil100k = ((numTotal + 99999) ~/ 100000) * 100000;
+      if (ceil100k > numTotal) {
+        suggestions.add(ceil100k);
+        suggestions.add(ceil100k + 100000);
+      } else {
+        suggestions.add(ceil100k + 100000);
+      }
+    }
+
+    final sorted = suggestions.where((v) => v > numTotal).toList()..sort();
+    return sorted.take(4).toList();
+  }
+
+  String _formatChipLabel(int amount) {
+    if (amount >= 1000 && amount % 1000 == 0) {
+      return '${amount ~/ 1000}rb';
+    }
+    return NumberFormat.decimalPattern('id_ID').format(amount);
+  }
+
+  void _showMemberSelector() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => Consumer(
+        builder: (c, modalRef, child) {
+          final cs = modalRef.watch(customerProvider);
+          return MemberSelectorSheet(
+            customers: cs.customers,
+            isLoading: cs.isLoading,
+            selectedCustomerId: ref.read(cartProvider).customerId,
+            onSelectGuest: () {
+              ref.read(cartProvider.notifier).setCustomer(null);
+              Navigator.pop(ctx);
+              AppToast.showInfo(context, 'Beralih ke mode Guest');
+            },
+            onSelectCustomer: (cust) {
+              ref.read(cartProvider.notifier).setCustomer(cust);
+              _customerNameController.text = cust.name;
+              Navigator.pop(ctx);
+              AppToast.showSuccess(
+                context,
+                'Member "${cust.name}" teridentifikasi!',
+              );
+            },
+            onCreateNew: () {
+              Navigator.pop(ctx);
+              _showCreateMemberDialog();
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  void _showCreateMemberDialog({
+    String? initName,
+    String? initPhone,
+    bool focusPhone = false,
+  }) {
+    final nameCtrl = TextEditingController(text: initName ?? '');
+    final phoneCtrl = TextEditingController(text: initPhone ?? '');
+    final emailCtrl = TextEditingController();
+    final nameFocusNode = FocusNode();
+    final phoneFocusNode = FocusNode();
+    bool saving = false;
+
+    if (focusPhone ||
+        (initName != null &&
+            initName.isNotEmpty &&
+            (initPhone == null || initPhone.isEmpty))) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        phoneFocusNode.requestFocus();
+      });
+    }
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setSt) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          titlePadding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          title: Row(children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                  color: AppColors.primaryContainer,
+                  borderRadius: BorderRadius.circular(10)),
+              child: const Icon(Icons.person_add_rounded,
+                  color: AppColors.primary, size: 22),
+            ),
+            const SizedBox(width: 12),
+            const Text('Daftar Member Baru',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+          ]),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const SizedBox(height: 8),
+              _memberField(nameCtrl, 'Nama Lengkap *', 'Contoh: Budi',
+                  cap: TextCapitalization.words, focusNode: nameFocusNode),
+              const SizedBox(height: 12),
+              _memberField(phoneCtrl, 'Nomor Telepon / WA', '08xxxxxxxxxx',
+                  keyboard: TextInputType.phone,
+                  focusNode: phoneFocusNode,
+                  formatters: [FilteringTextInputFormatter.digitsOnly]),
+              const SizedBox(height: 12),
+              _memberField(emailCtrl, 'Email (Opsional)', 'budi@example.com',
+                  keyboard: TextInputType.emailAddress),
+            ]),
+          ),
+          actions: [
+            TextButton(
+                onPressed: saving ? null : () => Navigator.pop(ctx),
+                child: const Text('Batal')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: saving
+                  ? null
+                  : () async {
+                      final name = nameCtrl.text.trim();
+                      if (name.isEmpty) {
+                        AppToast.showError(
+                            context, 'Nama lengkap wajib diisi');
+                        return;
+                      }
+                      setSt(() => saving = true);
+                      try {
+                        final newC = await ref
+                            .read(customerProvider.notifier)
+                            .createCustomer(
+                              name: name,
+                              phone: phoneCtrl.text.trim().isEmpty
+                                  ? null
+                                  : phoneCtrl.text.trim(),
+                              email: emailCtrl.text.trim().isEmpty
+                                  ? null
+                                  : emailCtrl.text.trim(),
+                            );
+                        ref.read(cartProvider.notifier).setCustomer(newC);
+                        _customerNameController.text = newC.name;
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        if (mounted) {
+                          HapticFeedback.lightImpact();
+                          AppToast.showSuccess(
+                              context,
+                              'Member baru "${newC.name}" didaftarkan & dipilih!');
+                        }
+                      } catch (e) {
+                        setSt(() => saving = false);
+                        if (mounted) {
+                          AppToast.showError(context,
+                              'Gagal mendaftar: ${e.toString()}');
+                        }
+                      }
+                    },
+              child: saving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Text('Simpan & Pilih Member'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _memberField(
+    TextEditingController ctrl,
+    String label,
+    String hint, {
+    TextInputType? keyboard,
+    TextCapitalization cap = TextCapitalization.none,
+    List<TextInputFormatter>? formatters,
+    FocusNode? focusNode,
+  }) =>
+      TextField(
+        controller: ctrl,
+        keyboardType: keyboard,
+        textCapitalization: cap,
+        inputFormatters: formatters,
+        focusNode: focusNode,
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: hint,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        ),
+      );
 
   Future<void> _handleProcessPayment() async {
     final cart = ref.read(cartProvider);
@@ -551,6 +799,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           _queueController.text != next.queueInput) {
         _queueController.text = next.queueInput;
       }
+      if (prev?.customerName != next.customerName &&
+          _customerNameController.text != next.customerName) {
+        _customerNameController.text = next.customerName;
+      }
     });
 
     return Scaffold(
@@ -699,7 +951,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
                 const SizedBox(height: 16),
 
-                // 2. Info Nama Pelanggan
+                // 2. Info Pelanggan & Member
                 Card(
                   elevation: 0,
                   color: Colors.white,
@@ -712,24 +964,388 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Nama Pelanggan (Opsional)',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                          ),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: cart.isMemberVerified
+                                    ? AppColors.primaryContainer
+                                    : AppColors.surfaceMuted,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(
+                                cart.isMemberVerified
+                                    ? Icons.stars_rounded
+                                    : Icons.person_outline_rounded,
+                                size: 16,
+                                color: cart.isMemberVerified
+                                    ? AppColors.primaryDark
+                                    : AppColors.textSecondary,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Pelanggan & Member',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            const Spacer(),
+                            if (cart.isMemberVerified)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primaryContainer,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Text(
+                                  'Member Aktif',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.primaryDark,
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _customerNameController,
-                          decoration: const InputDecoration(
-                            hintText: 'Nama pemesan',
-                            prefixIcon: Icon(
-                              Icons.person_outline_rounded,
-                              size: 20,
+                        const SizedBox(height: 12),
+                        if (cart.isMemberVerified) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryContainer.withValues(alpha: 0.5),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: AppColors.primaryLight,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: AppColors.primary.withValues(alpha: 0.2),
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons.stars_rounded,
+                                    color: AppColors.primary,
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        cart.customerName,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w800,
+                                          color: AppColors.textPrimary,
+                                        ),
+                                      ),
+                                      if (cart.customerPhone != null &&
+                                          cart.customerPhone!.isNotEmpty)
+                                        Text(
+                                          cart.customerPhone!,
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: AppColors.textSecondary,
+                                            fontFamily: 'monospace',
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                OutlinedButton(
+                                  style: OutlinedButton.styleFrom(
+                                    visualDensity: VisualDensity.compact,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 5,
+                                    ),
+                                    side: BorderSide(
+                                      color: AppColors.primary.withValues(alpha: 0.5),
+                                    ),
+                                    foregroundColor: AppColors.primary,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                  onPressed: _showMemberSelector,
+                                  child: const Text(
+                                    'Ganti',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ),
+                        ] else ...[
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: _customerNameController,
+                                  textInputAction: TextInputAction.done,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  decoration: const InputDecoration(
+                                    hintText: 'Nama pelanggan (opsional)',
+                                    hintStyle: TextStyle(
+                                      fontSize: 12,
+                                      color: AppColors.textMuted,
+                                    ),
+                                    prefixIcon: Icon(
+                                      Icons.person_outline_rounded,
+                                      size: 18,
+                                      color: AppColors.textMuted,
+                                    ),
+                                    isDense: true,
+                                  ),
+                                  onChanged: (v) => ref
+                                      .read(cartProvider.notifier)
+                                      .setCustomerName(v),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              OutlinedButton.icon(
+                                onPressed: _showMemberSelector,
+                                style: OutlinedButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 8,
+                                  ),
+                                  side: const BorderSide(color: AppColors.primary),
+                                  foregroundColor: AppColors.primary,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                                icon: const Icon(Icons.person_search_rounded, size: 16),
+                                label: const Text(
+                                  'Member',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                        if (cart.unregisteredQrPhone != null &&
+                            !cart.isMemberVerified) ...[
+                          const SizedBox(height: 10),
+                          GestureDetector(
+                            onTap: () => _showCreateMemberDialog(
+                              initName: cart.customerName != 'Pelanggan'
+                                  ? cart.customerName
+                                  : '',
+                              initPhone: cart.unregisteredQrPhone,
+                            ),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.amberLight,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: AppColors.amber.withValues(alpha: 0.4),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.info_outline_rounded,
+                                    size: 14,
+                                    color: AppColors.amber,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: RichText(
+                                      text: TextSpan(
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: AppColors.textPrimary,
+                                        ),
+                                        children: [
+                                          const TextSpan(text: 'No. HP '),
+                                          TextSpan(
+                                            text: cart.unregisteredQrPhone,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                              fontFamily: 'monospace',
+                                            ),
+                                          ),
+                                          const TextSpan(text: ' belum member — '),
+                                          const TextSpan(
+                                            text: 'Daftarkan?',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                              color: AppColors.amber,
+                                              decoration: TextDecoration.underline,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                        if (cart.isQrOrderWithoutPhone) ...[
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 9,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.amberLight,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: AppColors.amber.withValues(alpha: 0.4),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.info_outline_rounded,
+                                      size: 15,
+                                      color: AppColors.amber,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: RichText(
+                                        text: TextSpan(
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: AppColors.textPrimary,
+                                          ),
+                                          children: [
+                                            const TextSpan(text: 'Pesanan QR '),
+                                            TextSpan(
+                                              text: '(${cart.customerName})',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w800,
+                                                color: AppColors.textPrimary,
+                                              ),
+                                            ),
+                                            const TextSpan(
+                                              text: ' belum terhubung member.',
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        onPressed: _showMemberSelector,
+                                        style: OutlinedButton.styleFrom(
+                                          visualDensity: VisualDensity.compact,
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 6,
+                                          ),
+                                          side: const BorderSide(
+                                            color: AppColors.primary,
+                                            width: 1.2,
+                                          ),
+                                          foregroundColor: AppColors.primaryDark,
+                                          backgroundColor: Colors.white,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                          ),
+                                        ),
+                                        icon: const Icon(
+                                          Icons.person_search_rounded,
+                                          size: 14,
+                                        ),
+                                        label: const Text(
+                                          'Cari Member',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: ElevatedButton.icon(
+                                        onPressed: () => _showCreateMemberDialog(
+                                          initName: cart.customerName != 'Pelanggan'
+                                              ? cart.customerName
+                                              : '',
+                                          focusPhone: true,
+                                        ),
+                                        style: ElevatedButton.styleFrom(
+                                          visualDensity: VisualDensity.compact,
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 6,
+                                          ),
+                                          backgroundColor: AppColors.primary,
+                                          foregroundColor: Colors.white,
+                                          elevation: 0,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                          ),
+                                        ),
+                                        icon: const Icon(
+                                          Icons.person_add_rounded,
+                                          size: 14,
+                                        ),
+                                        label: const Text(
+                                          '+ Member Baru',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -1115,39 +1731,117 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                             keyboardType: TextInputType.number,
                             inputFormatters: [
                               FilteringTextInputFormatter.digitsOnly,
+                              ThousandsSeparatorInputFormatter(),
                             ],
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.textPrimary,
+                            ),
                             onChanged: (_) => setState(() {}),
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               prefixText: 'Rp ',
+                              prefixStyle: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textSecondary,
+                              ),
                               hintText: '0',
+                              filled: true,
+                              fillColor: AppColors.surface,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 14,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: const BorderSide(color: AppColors.border),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: const BorderSide(color: AppColors.border),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                              ),
+                              suffixIcon: _cashController.text.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(Icons.clear_rounded, size: 20),
+                                      onPressed: () {
+                                        setState(() {
+                                          _cashController.clear();
+                                        });
+                                      },
+                                    )
+                                  : null,
                             ),
                           ),
                           const SizedBox(height: 10),
 
-                          // Quick Preset Chips
+                          // Quick Preset Chips (Pecahan Rupiah Mendekati Total)
                           Wrap(
                             spacing: 8,
                             runSpacing: 8,
                             children: [
-                              ActionChip(
+                              ChoiceChip(
                                 label: const Text('Uang Pas'),
-                                onPressed: () {
+                                selected: (_cashReceived - cart.grandTotal).abs() < 1 &&
+                                    _cashReceived > 0,
+                                onSelected: (_) {
                                   setState(() {
-                                    _cashController.text = cart.grandTotal
-                                        .toStringAsFixed(0);
+                                    final intVal = cart.grandTotal.round();
+                                    final formatted = NumberFormat.decimalPattern('id_ID')
+                                        .format(intVal);
+                                    _cashController.text = formatted;
+                                    _cashController.selection =
+                                        TextSelection.collapsed(offset: formatted.length);
                                   });
                                 },
+                                selectedColor: AppColors.primaryContainer,
+                                side: BorderSide(
+                                  color: (_cashReceived - cart.grandTotal).abs() < 1 &&
+                                          _cashReceived > 0
+                                      ? AppColors.primary
+                                      : AppColors.border,
+                                ),
+                                labelStyle: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                  color: (_cashReceived - cart.grandTotal).abs() < 1 &&
+                                          _cashReceived > 0
+                                      ? AppColors.primaryDark
+                                      : AppColors.textPrimary,
+                                ),
                               ),
-                              ...[50000, 100000, 200000, 500000].map((nominal) {
-                                return ActionChip(
-                                  label: Text(
-                                    _formatCurrency(nominal.toDouble()),
-                                  ),
-                                  onPressed: () {
+                              ..._getSuggestedCashAmounts(cart.grandTotal).map((nominal) {
+                                final isSelected =
+                                    (_cashReceived - nominal).abs() < 1;
+                                return ChoiceChip(
+                                  label: Text(_formatChipLabel(nominal)),
+                                  selected: isSelected,
+                                  onSelected: (_) {
                                     setState(() {
-                                      _cashController.text = nominal.toString();
+                                      final formatted = NumberFormat.decimalPattern('id_ID')
+                                          .format(nominal);
+                                      _cashController.text = formatted;
+                                      _cashController.selection =
+                                          TextSelection.collapsed(offset: formatted.length);
                                     });
                                   },
+                                  selectedColor: AppColors.primaryContainer,
+                                  side: BorderSide(
+                                    color: isSelected
+                                        ? AppColors.primary
+                                        : AppColors.border,
+                                  ),
+                                  labelStyle: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 12,
+                                    color: isSelected
+                                        ? AppColors.primaryDark
+                                        : AppColors.textPrimary,
+                                  ),
                                 );
                               }),
                             ],
@@ -1612,6 +2306,43 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Formatter untuk memformat input angka dengan pemisah ribuan standar Indonesia (titik)
+class ThousandsSeparatorInputFormatter extends TextInputFormatter {
+  static final NumberFormat _formatter = NumberFormat.decimalPattern('id_ID');
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    if (newValue.text.isEmpty) {
+      return newValue.copyWith(text: '');
+    }
+
+    final cleanDigits = newValue.text.replaceAll(RegExp(r'[^\d]'), '');
+    if (cleanDigits.isEmpty) {
+      return newValue.copyWith(text: '');
+    }
+
+    // Batasi maksimum 12 digit (hingga ratusan miliar) agar tidak overflow
+    final truncatedDigits = cleanDigits.length > 12
+        ? cleanDigits.substring(0, 12)
+        : cleanDigits;
+
+    final intVal = int.tryParse(truncatedDigits);
+    if (intVal == null) {
+      return oldValue;
+    }
+
+    final formatted = _formatter.format(intVal);
+
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
     );
   }
 }

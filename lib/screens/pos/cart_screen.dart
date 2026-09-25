@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -7,9 +6,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/utils/app_toast.dart';
 import '../../models/cart_item_model.dart';
-import '../../models/customer_model.dart';
 import '../../providers/cart_provider.dart';
-import '../../providers/customer_provider.dart';
 import '../../providers/promotion_provider.dart';
 import 'promo_sheet.dart';
 
@@ -23,22 +20,12 @@ class CartScreen extends ConsumerStatefulWidget {
 }
 
 class _CartScreenState extends ConsumerState<CartScreen> {
-  late final TextEditingController _customerCtrl;
-
   @override
   void initState() {
     super.initState();
-    _customerCtrl =
-        TextEditingController(text: ref.read(cartProvider).customerName);
     Future.microtask(() {
       ref.read(promotionProvider.notifier).fetchActivePromotions();
     });
-  }
-
-  @override
-  void dispose() {
-    _customerCtrl.dispose();
-    super.dispose();
   }
 
   void _confirmClearCart() {
@@ -60,7 +47,6 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                 foregroundColor: Colors.white),
             onPressed: () {
               ref.read(cartProvider.notifier).clearCart();
-              _customerCtrl.clear();
               Navigator.pop(ctx);
             },
             child: const Text('Kosongkan'),
@@ -69,169 +55,6 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       ),
     );
   }
-
-  void _showMemberSelector() {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => Consumer(
-        builder: (c, modalRef, child) {
-          final cs = modalRef.watch(customerProvider);
-          return _MemberSelectorSheet(
-            customers: cs.customers,
-            isLoading: cs.isLoading,
-            selectedCustomerId: ref.read(cartProvider).customerId,
-            onSelectGuest: () {
-              ref.read(cartProvider.notifier).setCustomer(null);
-              Navigator.pop(ctx);
-              AppToast.showInfo(context, 'Beralih ke mode Guest');
-            },
-            onSelectCustomer: (c) {
-              ref.read(cartProvider.notifier).setCustomer(c);
-              Navigator.pop(ctx);
-              AppToast.showSuccess(
-                  context, 'Member "${c.name}" teridentifikasi!');
-            },
-            onCreateNew: () {
-              Navigator.pop(ctx);
-              _showCreateMemberDialog();
-            },
-          );
-        },
-      ),
-    );
-  }
-
-  void _showCreateMemberDialog({String? initName, String? initPhone}) {
-    final nameCtrl = TextEditingController(text: initName ?? '');
-    final phoneCtrl = TextEditingController(text: initPhone ?? '');
-    final emailCtrl = TextEditingController();
-    bool saving = false;
-
-    showDialog<void>(
-      context: context,
-      builder: (dialogCtx) => StatefulBuilder(
-        builder: (ctx, setSt) => AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          titlePadding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-          actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          title: Row(children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                  color: AppColors.primaryContainer,
-                  borderRadius: BorderRadius.circular(10)),
-              child: const Icon(Icons.person_add_rounded,
-                  color: AppColors.primary, size: 22),
-            ),
-            const SizedBox(width: 12),
-            const Text('Daftar Member Baru',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-          ]),
-          content: SingleChildScrollView(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const SizedBox(height: 8),
-              _field(nameCtrl, 'Nama Lengkap *', 'Contoh: Budi',
-                  cap: TextCapitalization.words),
-              const SizedBox(height: 12),
-              _field(phoneCtrl, 'Nomor Telepon / WA', '08xxxxxxxxxx',
-                  keyboard: TextInputType.phone,
-                  formatters: [FilteringTextInputFormatter.digitsOnly]),
-              const SizedBox(height: 12),
-              _field(emailCtrl, 'Email (Opsional)', 'budi@example.com',
-                  keyboard: TextInputType.emailAddress),
-            ]),
-          ),
-          actions: [
-            TextButton(
-                onPressed: saving ? null : () => Navigator.pop(ctx),
-                child: const Text('Batal')),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
-              ),
-              onPressed: saving
-                  ? null
-                  : () async {
-                      final name = nameCtrl.text.trim();
-                      if (name.isEmpty) {
-                        AppToast.showError(
-                            context, 'Nama lengkap wajib diisi');
-                        return;
-                      }
-                      setSt(() => saving = true);
-                      try {
-                        final newC = await ref
-                            .read(customerProvider.notifier)
-                            .createCustomer(
-                              name: name,
-                              phone: phoneCtrl.text.trim().isEmpty
-                                  ? null
-                                  : phoneCtrl.text.trim(),
-                              email: emailCtrl.text.trim().isEmpty
-                                  ? null
-                                  : emailCtrl.text.trim(),
-                            );
-                        ref.read(cartProvider.notifier).setCustomer(newC);
-                        if (ctx.mounted) Navigator.pop(ctx);
-                        if (mounted) {
-                          HapticFeedback.lightImpact();
-                          AppToast.showSuccess(
-                              context,
-                              'Member baru "${newC.name}" didaftarkan!');
-                        }
-                      } catch (e) {
-                        setSt(() => saving = false);
-                        if (mounted) {
-                          AppToast.showError(context,
-                              'Gagal mendaftar: ${e.toString()}');
-                        }
-                      }
-                    },
-              child: saving
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
-                  : const Text('Simpan & Pilih Member'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _field(
-    TextEditingController ctrl,
-    String label,
-    String hint, {
-    TextInputType? keyboard,
-    TextCapitalization cap = TextCapitalization.none,
-    List<TextInputFormatter>? formatters,
-  }) =>
-      TextField(
-        controller: ctrl,
-        keyboardType: keyboard,
-        textCapitalization: cap,
-        inputFormatters: formatters,
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: hint,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        ),
-      );
 
   void _showNotesDialog(CartItemModel item) {
     final ctrl = TextEditingController(text: item.notes ?? '');
@@ -420,12 +243,6 @@ class _CartScreenState extends ConsumerState<CartScreen> {
   @override
   Widget build(BuildContext context) {
     final cart = ref.watch(cartProvider);
-    ref.listen<CartState>(cartProvider, (prev, next) {
-      if (prev?.customerName != next.customerName &&
-          _customerCtrl.text != next.customerName) {
-        _customerCtrl.text = next.customerName;
-      }
-    });
     return Scaffold(
       backgroundColor: AppColors.background,
       resizeToAvoidBottomInset: true,
@@ -510,8 +327,6 @@ class _CartScreenState extends ConsumerState<CartScreen> {
         child: Column(children: [
           Expanded(
             child: CustomScrollView(slivers: [
-              if (cart.hasActiveQrOrder)
-                SliverToBoxAdapter(child: _qrBanner(cart)),
               SliverToBoxAdapter(child: _orderInfoCard(cart)),
               SliverToBoxAdapter(
                 child: Padding(
@@ -585,243 +400,97 @@ class _CartScreenState extends ConsumerState<CartScreen> {
         ]),
       );
 
-  Widget _qrBanner(CartState cart) => Container(
-        margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: AppColors.amberLight,
-          borderRadius: BorderRadius.circular(12),
-          border:
-              Border.all(color: AppColors.amber.withValues(alpha: 0.4)),
-        ),
-        child: Row(children: [
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-                color: AppColors.amber,
-                borderRadius: BorderRadius.circular(6)),
-            child: Text('#${cart.activeQrToken}',
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    fontFamily: 'monospace')),
-          ),
-          const SizedBox(width: 8),
-          const Expanded(
-              child: Text('Pesanan QR Terhubung',
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary))),
-          TextButton(
-            onPressed: () {
-              ref.read(cartProvider.notifier).detachQrOrder();
-              AppToast.showInfo(context, 'Tautan pesanan QR dilepas');
-            },
-            style: TextButton.styleFrom(
-                padding: EdgeInsets.zero,
-                minimumSize: const Size(50, 28),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-            child: const Text('Lepas Tautan',
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.amber)),
-          ),
-        ]),
-      );
-
   Widget _orderInfoCard(CartState cart) => Container(
         margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppColors.border),
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            SegmentedButton<DiningOption>(
-              segments: const [
-                ButtonSegment(
-                    value: DiningOption.dineIn,
-                    label: Text('Dine-in'),
-                    icon: Icon(Icons.restaurant_rounded)),
-                ButtonSegment(
-                    value: DiningOption.takeaway,
-                    label: Text('Takeaway'),
-                    icon: Icon(Icons.shopping_bag_rounded)),
-              ],
-              selected: {cart.diningOption},
-              onSelectionChanged: (s) => ref
-                  .read(cartProvider.notifier)
-                  .setDiningOption(s.first),
-              style: SegmentedButton.styleFrom(
-                selectedBackgroundColor: AppColors.primaryContainer,
-                selectedForegroundColor: AppColors.primaryDark,
-                side: const BorderSide(color: AppColors.border),
+            SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<DiningOption>(
+                segments: const [
+                  ButtonSegment(
+                      value: DiningOption.dineIn,
+                      label: Text('Dine-in'),
+                      icon: Icon(Icons.restaurant_rounded)),
+                  ButtonSegment(
+                      value: DiningOption.takeaway,
+                      label: Text('Takeaway'),
+                      icon: Icon(Icons.shopping_bag_rounded)),
+                ],
+                selected: {cart.diningOption},
+                onSelectionChanged: (s) => ref
+                    .read(cartProvider.notifier)
+                    .setDiningOption(s.first),
+                style: SegmentedButton.styleFrom(
+                  selectedBackgroundColor: AppColors.primaryContainer,
+                  selectedForegroundColor: AppColors.primaryDark,
+                  side: const BorderSide(color: AppColors.border),
+                ),
               ),
             ),
-            const SizedBox(height: 14),
-            if (cart.isMemberVerified)
-              _memberCard(cart)
-            else
-              _guestRow(),
-            if (cart.unregisteredQrPhone != null &&
-                !cart.isMemberVerified) ...[
+            if (cart.hasActiveQrOrder) ...[
               const SizedBox(height: 8),
-              _unregisteredChip(cart),
+              _qrIndicator(cart),
             ],
           ],
         ),
       );
 
-  Widget _memberCard(CartState cart) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+  Widget _qrIndicator(CartState cart) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: AppColors.primaryContainer,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.primaryLight),
+          color: AppColors.amberLight.withValues(alpha: 0.6),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.amber.withValues(alpha: 0.3)),
         ),
-        child: Row(children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                  color: AppColors.primary.withValues(alpha: 0.2)),
-            ),
-            child: const Icon(Icons.stars_rounded,
-                color: AppColors.primary, size: 20),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(cart.customerName,
-                    style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary)),
-                if (cart.customerPhone != null &&
-                    cart.customerPhone!.isNotEmpty)
-                  Text(cart.customerPhone!,
-                      style: const TextStyle(
-                          fontSize: 11,
-                          color: AppColors.textSecondary,
-                          fontFamily: 'monospace')),
-              ],
-            ),
-          ),
-          OutlinedButton(
-            style: OutlinedButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              side: BorderSide(
-                  color: AppColors.primary.withValues(alpha: 0.5)),
-              foregroundColor: AppColors.primary,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
-            ),
-            onPressed: _showMemberSelector,
-            child: const Text('Ganti',
-                style:
-                    TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-          ),
-        ]),
-      );
-
-  Widget _guestRow() => Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _customerCtrl,
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => FocusScope.of(context).unfocus(),
-              style: const TextStyle(
-                  fontSize: 13, fontWeight: FontWeight.w600),
-              decoration: const InputDecoration(
-                hintText: 'Nama pelanggan (opsional)',
-                hintStyle:
-                    TextStyle(fontSize: 12, color: AppColors.textMuted),
-                prefixIcon: Icon(Icons.person_outline_rounded,
-                    size: 18, color: AppColors.textMuted),
-                isDense: true,
-              ),
-              onChanged: (v) =>
-                  ref.read(cartProvider.notifier).setCustomerName(v),
-            ),
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton.icon(
-            onPressed: _showMemberSelector,
-            style: OutlinedButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              side: const BorderSide(color: AppColors.primary),
-              foregroundColor: AppColors.primary,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
-            ),
-            icon: const Icon(Icons.person_search_rounded, size: 16),
-            label: const Text('Member',
-                style:
-                    TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      );
-
-  Widget _unregisteredChip(CartState cart) => GestureDetector(
-        onTap: () => _showCreateMemberDialog(
-          initName:
-              cart.customerName != 'Pelanggan' ? cart.customerName : '',
-          initPhone: cart.unregisteredQrPhone,
-        ),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: AppColors.amberLight,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-                color: AppColors.amber.withValues(alpha: 0.4)),
-          ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.info_outline_rounded,
-                size: 14, color: AppColors.amber),
+        child: Row(
+          children: [
+            const Icon(Icons.qr_code_2_rounded,
+                size: 15, color: AppColors.amber),
             const SizedBox(width: 6),
-            Flexible(
-              child: RichText(
-                text: TextSpan(
-                  style: const TextStyle(
-                      fontSize: 11, color: AppColors.textPrimary),
+            Text(
+              'Pesanan QR #${cart.activeQrToken}',
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const Spacer(),
+            InkWell(
+              onTap: () {
+                ref.read(cartProvider.notifier).detachQrOrder();
+                AppToast.showInfo(context, 'Tautan pesanan QR dilepas');
+              },
+              borderRadius: BorderRadius.circular(6),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    const TextSpan(text: 'No. HP '),
-                    TextSpan(
-                        text: cart.unregisteredQrPhone,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontFamily: 'monospace')),
-                    const TextSpan(text: ' belum member — '),
-                    const TextSpan(
-                        text: 'Daftarkan?',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.amber,
-                            decoration: TextDecoration.underline)),
+                    Text(
+                      'Lepas',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.amber,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(width: 2),
+                    Icon(Icons.close_rounded,
+                        size: 12, color: AppColors.amber),
                   ],
                 ),
               ),
             ),
-          ]),
+          ],
         ),
       );
 
@@ -1175,234 +844,5 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                       color: vColor ?? AppColors.textPrimary)),
         ],
       );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Member Selector Sheet
-// ═══════════════════════════════════════════════════════════════════════════════
-
-class _MemberSelectorSheet extends StatefulWidget {
-  final List<CustomerModel> customers;
-  final bool isLoading;
-  final String? selectedCustomerId;
-  final VoidCallback onSelectGuest;
-  final ValueChanged<CustomerModel> onSelectCustomer;
-  final VoidCallback onCreateNew;
-
-  const _MemberSelectorSheet({
-    required this.customers,
-    required this.isLoading,
-    this.selectedCustomerId,
-    required this.onSelectGuest,
-    required this.onSelectCustomer,
-    required this.onCreateNew,
-  });
-
-  @override
-  State<_MemberSelectorSheet> createState() => _MemberSelectorSheetState();
-}
-
-class _MemberSelectorSheetState extends State<_MemberSelectorSheet> {
-  String _q = '';
-
-  @override
-  Widget build(BuildContext context) {
-    final filtered = widget.customers.where((c) {
-      if (_q.trim().isEmpty) return true;
-      final q = _q.toLowerCase().trim();
-      return c.name.toLowerCase().contains(q) ||
-          (c.phone?.toLowerCase().contains(q) ?? false) ||
-          (c.email?.toLowerCase().contains(q) ?? false);
-    }).toList();
-
-    return DraggableScrollableSheet(
-      initialChildSize: 0.65,
-      minChildSize: 0.4,
-      maxChildSize: 0.9,
-      expand: false,
-      builder: (ctx, sc) => Column(children: [
-        const SizedBox(height: 12),
-        Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-                color: AppColors.border,
-                borderRadius: BorderRadius.circular(2))),
-        const SizedBox(height: 14),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(children: [
-            const Text('Pilih Pelanggan / Member',
-                style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary)),
-            const Spacer(),
-            TextButton.icon(
-              style: TextButton.styleFrom(
-                  foregroundColor: AppColors.primary,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 4)),
-              onPressed: widget.onCreateNew,
-              icon: const Icon(Icons.person_add_rounded, size: 16),
-              label: const Text('+ Member Baru',
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 12)),
-            ),
-          ]),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
-          child: TextField(
-            onChanged: (v) => setState(() => _q = v),
-            decoration: InputDecoration(
-              hintText: 'Cari nama, nomor HP, atau email...',
-              hintStyle: const TextStyle(
-                  fontSize: 12, color: AppColors.textMuted),
-              prefixIcon: const Icon(Icons.search_rounded,
-                  size: 20, color: AppColors.textMuted),
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(color: AppColors.border)),
-              enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(color: AppColors.border)),
-              focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(
-                      color: AppColors.primary, width: 1.5)),
-              contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 14, vertical: 10),
-              isDense: true,
-            ),
-            style: const TextStyle(fontSize: 13),
-          ),
-        ),
-        const Divider(height: 1),
-        Expanded(
-          child: widget.isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : ListView(
-                  controller: sc,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 8),
-                  children: [
-                    ListTile(
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                      leading: Container(
-                        width: 38,
-                        height: 38,
-                        decoration: BoxDecoration(
-                            color: AppColors.surfaceMuted,
-                            borderRadius: BorderRadius.circular(10)),
-                        child: const Icon(Icons.person_off_rounded,
-                            size: 20,
-                            color: AppColors.textSecondary),
-                      ),
-                      title: const Text('Guest (Bukan Member)',
-                          style: TextStyle(
-                              fontSize: 13, fontWeight: FontWeight.w700)),
-                      subtitle: const Text(
-                          'Transaksi biasa tanpa poin loyalitas',
-                          style: TextStyle(
-                              fontSize: 11,
-                              color: AppColors.textSecondary)),
-                      trailing: widget.selectedCustomerId == null
-                          ? const Icon(Icons.check_circle_rounded,
-                              color: AppColors.primary, size: 20)
-                          : null,
-                      onTap: widget.onSelectGuest,
-                    ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 4),
-                      child: Divider(
-                          height: 1, color: AppColors.borderLight),
-                    ),
-                    if (filtered.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(children: [
-                          const Icon(Icons.search_off_rounded,
-                              size: 36, color: AppColors.textMuted),
-                          const SizedBox(height: 8),
-                          Text(
-                            _q.isNotEmpty
-                                ? 'Member "$_q" tidak ditemukan'
-                                : 'Belum ada data member terdaftar',
-                            style: const TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textSecondary),
-                          ),
-                          if (_q.isNotEmpty) ...[
-                            const SizedBox(height: 12),
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.primary,
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(
-                                    borderRadius:
-                                        BorderRadius.circular(10)),
-                              ),
-                              onPressed: widget.onCreateNew,
-                              icon: const Icon(Icons.add, size: 16),
-                              label: Text('Daftarkan "$_q"',
-                                  style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold)),
-                            ),
-                          ],
-                        ]),
-                      )
-                    else
-                      ...filtered.map((c) {
-                        final sel = widget.selectedCustomerId == c.id;
-                        return ListTile(
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
-                          tileColor:
-                              sel ? AppColors.primaryContainer : null,
-                          leading: Container(
-                            width: 38,
-                            height: 38,
-                            decoration: BoxDecoration(
-                                color: sel
-                                    ? Colors.white
-                                    : AppColors.primaryLight,
-                                borderRadius:
-                                    BorderRadius.circular(10)),
-                            child: Icon(Icons.star_rounded,
-                                size: 22,
-                                color: sel
-                                    ? AppColors.primary
-                                    : AppColors.primaryDark),
-                          ),
-                          title: Text(c.name,
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: sel
-                                      ? AppColors.primaryDark
-                                      : AppColors.textPrimary)),
-                          subtitle: Text(
-                              c.displaySubtitle.isNotEmpty
-                                  ? c.displaySubtitle
-                                  : 'Member Terdaftar',
-                              style: const TextStyle(
-                                  fontSize: 11,
-                                  color: AppColors.textSecondary)),
-                          trailing: sel
-                              ? const Icon(Icons.check_circle_rounded,
-                                  color: AppColors.primary, size: 20)
-                              : null,
-                          onTap: () => widget.onSelectCustomer(c),
-                        );
-                      }),
-                  ],
-                ),
-        ),
-      ]),
-    );
-  }
 }
 

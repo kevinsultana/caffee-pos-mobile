@@ -1,5 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 
@@ -7,6 +11,122 @@ import '../models/order_model.dart';
 import '../models/store_settings_model.dart';
 
 class BluetoothPrinterService {
+  /// Cache ESC/POS raster image bytes agar tidak perlu mengunduh ulang gambar yang sama
+  static final Map<String, List<int>> _rasterCache = {};
+
+  /// Mengunduh gambar dari [imageUrl] dan mengonversinya menjadi perintah ESC/POS raster bit image (GS v 0).
+  /// [maxDots] adalah lebar piksel maksimum (256 untuk 58mm, 384 untuk 80mm).
+  static Future<List<int>?> rasterizeImageUrl(
+    String imageUrl, {
+    int maxDots = 256,
+  }) async {
+    try {
+      final cacheKey = '$imageUrl@$maxDots';
+      if (_rasterCache.containsKey(cacheKey)) {
+        return _rasterCache[cacheKey];
+      }
+
+      final uri = Uri.tryParse(imageUrl);
+      if (uri == null || (!uri.isScheme('http') && !uri.isScheme('https'))) {
+        return null;
+      }
+
+      final httpClient = HttpClient();
+      httpClient.connectionTimeout = const Duration(seconds: 5);
+      final request = await httpClient.getUrl(uri);
+      final response =
+          await request.close().timeout(const Duration(seconds: 5));
+      if (response.statusCode != 200) {
+        return null;
+      }
+
+      final imgBytes = await consolidateHttpClientResponseBytes(response);
+      if (imgBytes.isEmpty) return null;
+
+      final codec = await ui.instantiateImageCodec(imgBytes);
+      final frameInfo = await codec.getNextFrame();
+      final img = frameInfo.image;
+
+      final origW = img.width;
+      final origH = img.height;
+      if (origW <= 0 || origH <= 0) return null;
+
+      // Batasi lebar maksimum dan pastikan kelipatan 8 dots
+      int targetW = origW > maxDots ? maxDots : origW;
+      targetW = (targetW ~/ 8) * 8;
+      if (targetW < 8) targetW = 8;
+      final targetH = ((origH * targetW) / origW).round();
+      if (targetH <= 0) return null;
+
+      final pictureRecorder = ui.PictureRecorder();
+      final canvas = Canvas(pictureRecorder);
+      // Background putih solid (khusus PNG transparan agar tidak jadi hitam pekat)
+      canvas.drawRect(
+        Rect.fromLTWH(0, 0, targetW.toDouble(), targetH.toDouble()),
+        Paint()..color = const Color(0xFFFFFFFF),
+      );
+      canvas.drawImageRect(
+        img,
+        Rect.fromLTWH(0, 0, origW.toDouble(), origH.toDouble()),
+        Rect.fromLTWH(0, 0, targetW.toDouble(), targetH.toDouble()),
+        Paint()..filterQuality = FilterQuality.medium,
+      );
+
+      final picture = pictureRecorder.endRecording();
+      final renderedImg = await picture.toImage(targetW, targetH);
+      final byteData =
+          await renderedImg.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (byteData == null) return null;
+
+      final rawBytes = byteData.buffer.asUint8List();
+      final bytesWidth = targetW ~/ 8;
+      final xL = bytesWidth & 0xff;
+      final xH = (bytesWidth >> 8) & 0xff;
+      final yL = targetH & 0xff;
+      final yH = (targetH >> 8) & 0xff;
+
+      // Header ESC/POS Raster Bit Image: GS v 0 0 xL xH yL yH
+      final rasterBytes = <int>[
+        29, 118, 48, 0, // GS v 0 0
+        xL, xH,
+        yL, yH,
+      ];
+
+      for (int y = 0; y < targetH; y++) {
+        for (int b = 0; b < bytesWidth; b++) {
+          int byteVal = 0;
+          for (int bit = 0; bit < 8; bit++) {
+            final x = b * 8 + bit;
+            final idx = (y * targetW + x) * 4;
+            final r = rawBytes[idx];
+            final g = rawBytes[idx + 1];
+            final bl = rawBytes[idx + 2];
+            final a = rawBytes[idx + 3];
+
+            // Jika transparan (a < 128) -> putih (255)
+            final lum =
+                a < 128 ? 255.0 : (0.299 * r + 0.587 * g + 0.114 * bl);
+            if (lum < 165) {
+              byteVal |= (0x80 >> bit);
+            }
+          }
+          rasterBytes.add(byteVal);
+        }
+      }
+
+      // Bersihkan resource image
+      img.dispose();
+      picture.dispose();
+      renderedImg.dispose();
+
+      _rasterCache[cacheKey] = rasterBytes;
+      return rasterBytes;
+    } catch (e) {
+      debugPrint('[BluetoothPrinterService] Gagal rasterize logo: $e');
+      return null;
+    }
+  }
+
   /// Cek izin Bluetooth perangkat
   static Future<bool> checkPermission() async {
     try {
@@ -109,6 +229,25 @@ class BluetoothPrinterService {
     // Font Size (Font B jika SMALL)
     if (settings?.receiptFontSize == 'SMALL') {
       bytes.addAll([27, 77, 1]); // Font B
+    }
+
+    // ── 1. LOGO STRUK (di atas Header jika diaktifkan & URL logo tersedia) ─
+    final logoUrl = settings?.receiptLogoUrl;
+    if ((settings?.receiptShowLogo ?? true) &&
+        logoUrl != null &&
+        logoUrl.trim().isNotEmpty) {
+      try {
+        final maxDots = (settings?.printerWidth == 80) ? 384 : 256;
+        final logoBytes =
+            await rasterizeImageUrl(logoUrl.trim(), maxDots: maxDots);
+        if (logoBytes != null && logoBytes.isNotEmpty) {
+          bytes.addAll(alignCenter);
+          bytes.addAll(logoBytes);
+          bytes.addAll(lineFeed);
+        }
+      } catch (err) {
+        debugPrint('[BluetoothPrinterService] Gagal cetak logo: $err');
+      }
     }
 
     // 2. Header Nama Toko (jika receiptShowStoreName true)
@@ -406,6 +545,25 @@ class BluetoothPrinterService {
 
     final bytes = <int>[];
     bytes.addAll([27, 64]); // Init
+
+    // Logo Struk Uji Coba jika ada
+    final logoUrl = settings?.receiptLogoUrl;
+    if ((settings?.receiptShowLogo ?? true) &&
+        logoUrl != null &&
+        logoUrl.trim().isNotEmpty) {
+      try {
+        final maxDots = (settings?.printerWidth == 80) ? 384 : 256;
+        final logoBytes =
+            await rasterizeImageUrl(logoUrl.trim(), maxDots: maxDots);
+        if (logoBytes != null && logoBytes.isNotEmpty) {
+          bytes.addAll([27, 97, 1]); // Center
+          bytes.addAll(logoBytes);
+          bytes.addAll([10]);
+        }
+      } catch (err) {
+        debugPrint('[BluetoothPrinterService] Gagal cetak logo test: $err');
+      }
+    }
 
     // Header Nama Toko
     bytes.addAll([27, 97, 1]); // Center

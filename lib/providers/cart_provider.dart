@@ -49,6 +49,9 @@ class CartState {
 
   bool get isMemberVerified => customerId != null && customerId!.isNotEmpty;
 
+  bool get isQrOrderWithoutPhone =>
+      hasActiveQrOrder && !isMemberVerified && (customerPhone == null || customerPhone!.trim().isEmpty);
+
   int get totalItems => items.fold(0, (sum, item) => sum + item.quantity);
 
   double get totalPrice => items.fold(0.0, (sum, item) => sum + item.subtotal);

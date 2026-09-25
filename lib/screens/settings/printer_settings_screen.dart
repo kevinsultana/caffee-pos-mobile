@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -36,6 +37,14 @@ class _PrinterSettingsScreenState extends ConsumerState<PrinterSettingsScreen> {
     super.initState();
     _headerController = TextEditingController();
     _footerController = TextEditingController();
+
+    // Pastikan data pengaturan terbaru termasuk receiptLogoUrl selalu ter-fetch
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final auth = ref.read(authProvider);
+      if (auth.storeId.isNotEmpty) {
+        ref.read(storeSettingsProvider.notifier).fetchSettings(auth.storeId);
+      }
+    });
   }
 
   @override
@@ -549,6 +558,90 @@ class _PrinterSettingsScreenState extends ConsumerState<PrinterSettingsScreen> {
                     onChanged: (val) => setState(() => _showLogo = val),
                     activeTrackColor: AppColors.primary,
                   ),
+
+                  if (_showLogo) ...[
+                    Container(
+                      margin: const EdgeInsets.only(top: 4, bottom: 12),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.background,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.borderLight),
+                      ),
+                      child: Row(
+                        children: [
+                          if (storeSettingsState.settings.receiptLogoUrl != null &&
+                              storeSettingsState.settings.receiptLogoUrl!.trim().isNotEmpty) ...[
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                width: 44,
+                                height: 44,
+                                color: Colors.white,
+                                padding: const EdgeInsets.all(2),
+                                child: CachedNetworkImage(
+                                  imageUrl: storeSettingsState.settings.receiptLogoUrl!.trim(),
+                                  fit: BoxFit.contain,
+                                  placeholder: (context, url) => const Center(
+                                    child: SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    ),
+                                  ),
+                                  errorWidget: (context, url, error) => const Icon(
+                                    Icons.broken_image_rounded,
+                                    size: 20,
+                                    color: AppColors.textMuted,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Logo Struk Aktif',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                  SizedBox(height: 2),
+                                  Text(
+                                    'Logo akan otomatis dicetak di atas nama toko pada struk pelanggan.',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ] else ...[
+                            const Icon(
+                              Icons.info_outline_rounded,
+                              size: 20,
+                              color: AppColors.amber,
+                            ),
+                            const SizedBox(width: 10),
+                            const Expanded(
+                              child: Text(
+                                'Belum ada logo struk yang diunggah. Unggah foto logo di menu Pengaturan Struk pada Web App.',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
 
                   SwitchListTile.adaptive(
                     contentPadding: EdgeInsets.zero,
